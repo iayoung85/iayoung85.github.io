@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Plaid Link Demo</title>
+</head>
+<body>
+  <h1>Simple Plaid Integration</h1>
+  <button id="link-button">Connect Bank Account</button>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <script>
+    (function($) {
+      async function fetchLinkToken() {
+        // Replace with your Railway URL (e.g., https://your-app-name.up.railway.app/api/create_link_token)
+        const response = await fetch('https://pythonplaid-production.up.railway.app');
+        const data = await response.json();
+        return data.link_token;
+      }
+
+      async function exchangePublicToken(public_token) {
+        // Replace with your Railway URL
+        const response = await fetch('https://pythonplaid-production.up.railway.app', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ public_token: public_token }),
+        });
+        const data = await response.json();
+        console.log('Access token received:', data.access_token);
+        // Here, you could fetch transactions or update the UI
+      }
+
+      $('#link-button').on('click', async function(e) {
+        const linkToken = await fetchLinkToken();
+        const handler = Plaid.create({
+          token: linkToken,
+          onSuccess: async (public_token, metadata) => {
+            await exchangePublicToken(public_token);
+            alert('Bank connected successfully!');
+          },
+          onLoad: () => {
+            // Link is ready
+          },
+          onExit: (err, metadata) => {
+            if (err != null) {
+              console.error('Error:', err);
+            }
+          },
+          onEvent: (eventName, metadata) => {
+            console.log('Event:', eventName);
+          },
+        });
+        handler.open();
+      });
+
+      // If this page is the OAuth redirect target, automatically re-open Link
+      // so Link can complete the OAuth flow. Plaid will append ?oauth_state_id=...
+      // to the URL when redirecting back from the bank.
+      (async function handleOauthReturn() {
+        if (!window.location.href.includes('?oauth_state_id=')) return;
+        try {
+          const linkToken = await fetchLinkToken();
+          const handler = Plaid.create({
+            token: linkToken,
+            receivedRedirectUri: window.location.href,
+            onSuccess: async (public_token, metadata) => {
+              await exchangePublicToken(public_token);
+              alert('Bank connected successfully!');
+            },
+            onLoad: () => {
+              // Link is ready after OAuth redirect
+            },
+            onExit: (err, metadata) => {
+              if (err != null) console.error('Error:', err);
+            },
+            onEvent: (eventName, metadata) => {
+              console.log('Event:', eventName);
+            },
+          });
+          handler.open();
+        } catch (err) {
+          console.error('Error handling OAuth redirect:', err);
+        }
+      })();
+    })(jQuery);
+  </script>
+</body>
+</html>
