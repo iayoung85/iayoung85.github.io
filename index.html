@@ -240,6 +240,10 @@
         <button class="logout-btn" onclick="logout()">Logout</button>
       </div>
       
+      <div id="approval-message" style="display:none; color:#e74c3c; margin:15px 0; padding:15px; background:#fdf2f2; border-radius:4px;">
+        ⚠️ Your account is pending admin approval. Please contact the administrator to enable bank connections.
+      </div>
+      
       <div id="dashboard-message"></div>
       
       <button id="link-button" class="btn btn-primary">Connect Bank Account</button>
@@ -284,6 +288,19 @@
       $('#user-email').text(currentUser.email);
       $('#user-name').text(`${currentUser.first_name || ''} ${currentUser.last_name || ''}`);
       clearMessages();
+      
+      // Check approval status
+      if (currentUser.approved === false) {
+        $('#approval-message').show();
+        $('#link-button').prop('disabled', true);
+        $('#link-button').css('opacity', '0.5');
+        $('#link-button').css('cursor', 'not-allowed');
+      } else {
+        $('#approval-message').hide();
+        $('#link-button').prop('disabled', false);
+        $('#link-button').css('opacity', '1');
+        $('#link-button').css('cursor', 'pointer');
+      }
     }
 
     function clearMessages() {
