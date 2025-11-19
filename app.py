@@ -155,4 +155,6 @@ def get_transactions():
 
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    # Only use debug mode in development (when FLASK_ENV is set to 'development')
+    debug_mode = os.getenv('FLASK_ENV') == 'development'
+    app.run(debug=debug_mode, port=5000)
