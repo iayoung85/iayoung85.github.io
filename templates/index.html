@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plaid Bank Connection</title>
+    <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+
+        .connect-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 16px 32px;
+            font-size: 18px;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+
+        .connect-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+
+        .connect-button:active {
+            transform: translateY(0);
+        }
+
+        .connect-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .transactions-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .transactions-button:hover {
+            background: #218838;
+        }
+
+        .transactions-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .transactions {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .transaction-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .transaction-item:last-child {
+            border-bottom: none;
+        }
+
+        .transaction-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .transaction-date {
+            font-size: 12px;
+            color: #999;
+            margin-top: 4px;
+        }
+
+        .transaction-amount {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 16px;
+        }
+
+        .instructions {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .instructions h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+            color: #666;
+            line-height: 1.6;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏦 Bank Connection</h1>
+        <p class="subtitle">Securely connect your bank account using Plaid</p>
+
+        <div class="instructions">
+            <h3>How it works:</h3>
+            <ol>
+                <li>Click the "Connect Bank" button below</li>
+                <li>Select your financial institution from the list</li>
+                <li>Authorize Plaid to securely access your account information</li>
+                <li>View your recent transactions</li>
+            </ol>
+        </div>
+
+        <button id="connectButton" class="connect-button">
+            🔗 Connect Bank Account
+        </button>
+
+        <button id="transactionsButton" class="transactions-button" disabled>
+            📊 View Transactions
+        </button>
+
+        <div id="status"></div>
+        <div id="transactions" class="transactions"></div>
+    </div>
+
+    <script>
+        let linkToken = null;
+        let handler = null;
+        let accessToken = null;
+
+        const connectButton = document.getElementById('connectButton');
+        const transactionsButton = document.getElementById('transactionsButton');
+        const statusDiv = document.getElementById('status');
+        const transactionsDiv = document.getElementById('transactions');
+
+        // Function to display status messages
+        function showStatus(message, type) {
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        // Function to fetch link token from backend
+        async function getLinkToken() {
+            try {
+                const response = await fetch('/api/create_link_token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to create link token');
+                }
+                
+                return data.link_token;
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // Function to exchange public token for access token
+        async function exchangePublicToken(publicToken) {
+            try {
+                const response = await fetch('/api/exchange_public_token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ public_token: publicToken })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to exchange token');
+                }
+                
+                return data;
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        // Function to fetch transactions
+        async function getTransactions() {
+            try {
+                transactionsButton.disabled = true;
+                showStatus('Loading transactions...', 'info');
+                
+                const response = await fetch('/api/transactions');
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to fetch transactions');
+                }
+                
+                displayTransactions(data);
+                showStatus(`Successfully loaded ${data.total_transactions} transactions`, 'success');
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                transactionsButton.disabled = false;
+            }
+        }
+
+        // Function to display transactions
+        function displayTransactions(data) {
+            transactionsDiv.innerHTML = '';
+            
+            data.accounts.forEach(account => {
+                account.transactions.forEach(transaction => {
+                    const transactionItem = document.createElement('div');
+                    transactionItem.className = 'transaction-item';
+                    transactionItem.innerHTML = `
+                        <div>
+                            <div class="transaction-name">${transaction.name}</div>
+                            <div class="transaction-date">${transaction.date}</div>
+                        </div>
+                        <div class="transaction-amount">$${transaction.amount.toFixed(2)}</div>
+                    `;
+                    transactionsDiv.appendChild(transactionItem);
+                });
+            });
+        }
+
+        // Initialize Plaid Link
+        async function initializePlaidLink() {
+            try {
+                connectButton.disabled = true;
+                showStatus('Initializing Plaid Link...', 'info');
+                
+                linkToken = await getLinkToken();
+                
+                handler = Plaid.create({
+                    token: linkToken,
+                    onSuccess: async (public_token, metadata) => {
+                        showStatus('Bank connected! Exchanging token...', 'info');
+                        
+                        try {
+                            const result = await exchangePublicToken(public_token);
+                            accessToken = result.access_token;
+                            showStatus(`✅ ${result.message}`, 'success');
+                            transactionsButton.disabled = false;
+                        } catch (error) {
+                            showStatus('Failed to complete connection', 'error');
+                        }
+                    },
+                    onExit: (err, metadata) => {
+                        if (err) {
+                            showStatus(`Connection failed: ${err.display_message || err.error_message}`, 'error');
+                        } else {
+                            showStatus('Connection cancelled', 'info');
+                        }
+                    },
+                    onEvent: (eventName, metadata) => {
+                        console.log('Plaid Link event:', eventName, metadata);
+                    }
+                });
+                
+                // Open Plaid Link
+                handler.open();
+            } catch (error) {
+                showStatus('Failed to initialize Plaid Link', 'error');
+            } finally {
+                connectButton.disabled = false;
+            }
+        }
+
+        // Event listeners
+        connectButton.addEventListener('click', initializePlaidLink);
+        transactionsButton.addEventListener('click', getTransactions);
+    </script>
+</body>
+</html>
