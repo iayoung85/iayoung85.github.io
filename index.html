@@ -7,22 +7,44 @@
 </head>
 <body>
   <h1>Simple Plaid Integration</h1>
+  <button id="test-connection">Test Backend Connection</button>
   <button id="link-button">Connect Bank Account</button>
+  <div id="connection-status" style="margin-top: 10px; padding: 10px; border-radius: 5px;"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script>
     (function($) {
+      const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
+
+      // Test backend connection
+      $('#test-connection').on('click', async function(e) {
+        const statusDiv = $('#connection-status');
+        statusDiv.text('Testing connection...').css('background-color', '#ffc107').css('color', '#000');
+        
+        try {
+          const response = await fetch(`${BACKEND_URL}/health`);
+          const data = await response.json();
+          
+          if (data.status === 'ok') {
+            statusDiv.text('✓ Backend connected successfully!').css('background-color', '#4caf50').css('color', '#fff');
+          } else {
+            statusDiv.text('⚠ Backend responded but with unexpected status').css('background-color', '#ff9800').css('color', '#fff');
+          }
+        } catch (error) {
+          statusDiv.text('✗ Connection failed: ' + error.message).css('background-color', '#f44336').css('color', '#fff');
+          console.error('Connection error:', error);
+        }
+      });
+
       async function fetchLinkToken() {
-        // Replace with your Railway URL (e.g., https://your-app-name.up.railway.app/api/create_link_token)
-        const response = await fetch('pythonplaidbackend-production.up.railway.app');
+        const response = await fetch(`${BACKEND_URL}/api/create_link_token`);
         const data = await response.json();
         return data.link_token;
       }
 
       async function exchangePublicToken(public_token) {
-        // Replace with your Railway URL
-        const response = await fetch('pythonplaidbackend-production.up.railway.app', {
+        const response = await fetch(`${BACKEND_URL}/api/set_access_token`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
