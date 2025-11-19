@@ -3,112 +3,491 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Plaid Link Demo</title>
+  <title>Plaid Banking App</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 450px;
+      width: 100%;
+      padding: 40px;
+    }
+    
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+      font-size: 28px;
+    }
+    
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      color: #333;
+      font-weight: 500;
+      font-size: 14px;
+    }
+    
+    input {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: border-color 0.3s;
+    }
+    
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      margin-top: 10px;
+    }
+    
+    .btn-primary {
+      background: #667eea;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background: #5568d3;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+    
+    .btn-secondary {
+      background: #f5f5f5;
+      color: #333;
+    }
+    
+    .btn-secondary:hover {
+      background: #e0e0e0;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-link {
+      background: none;
+      border: none;
+      color: #667eea;
+      cursor: pointer;
+      text-decoration: underline;
+      font-size: 14px;
+      margin-top: 15px;
+    }
+    
+    .message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    
+    .message.error {
+      background: #fee;
+      color: #c33;
+      border: 1px solid #fcc;
+    }
+    
+    .message.success {
+      background: #efe;
+      color: #3c3;
+      border: 1px solid #cfc;
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+    
+    .user-info {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+    }
+    
+    .user-info p {
+      margin: 5px 0;
+      color: #555;
+      font-size: 14px;
+    }
+    
+    .user-info strong {
+      color: #333;
+    }
+    
+    .logout-btn {
+      background: #dc3545;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      margin-top: 10px;
+    }
+    
+    .logout-btn:hover {
+      background: #c82333;
+    }
+  </style>
 </head>
 <body>
-  <h1>Simple Plaid Integration</h1>
-  <button id="test-connection">Test Backend Connection</button>
-  <button id="link-button">Connect Bank Account</button>
-  <div id="connection-status" style="margin-top: 10px; padding: 10px; border-radius: 5px;"></div>
+  <div class="container">
+    <!-- Login Form -->
+    <div id="login-view" class="hidden">
+      <h1>Welcome Back</h1>
+      <p class="subtitle">Login to manage your bank connections</p>
+      
+      <div id="login-message"></div>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-email">Email</label>
+          <input type="email" id="login-email" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="login-password">Password</label>
+          <input type="password" id="login-password" required>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Login</button>
+        <button type="button" class="btn-link" onclick="showRegister()">Don't have an account? Register</button>
+      </form>
+    </div>
+    
+    <!-- Register Form -->
+    <div id="register-view" class="hidden">
+      <h1>Create Account</h1>
+      <p class="subtitle">Get started with secure banking</p>
+      
+      <div id="register-message"></div>
+      
+      <form id="register-form">
+        <div class="form-group">
+          <label for="register-firstname">First Name</label>
+          <input type="text" id="register-firstname" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-lastname">Last Name</label>
+          <input type="text" id="register-lastname" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-email">Email</label>
+          <input type="email" id="register-email" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="register-password">Password (min 8 characters)</label>
+          <input type="password" id="register-password" minlength="8" required>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Create Account</button>
+        <button type="button" class="btn-link" onclick="showLogin()">Already have an account? Login</button>
+      </form>
+    </div>
+    
+    <!-- Dashboard (after login) -->
+    <div id="dashboard-view" class="hidden">
+      <h1>Bank Connections</h1>
+      <p class="subtitle">Connect and manage your accounts</p>
+      
+      <div class="user-info">
+        <p><strong>Email:</strong> <span id="user-email"></span></p>
+        <p><strong>Name:</strong> <span id="user-name"></span></p>
+        <button class="logout-btn" onclick="logout()">Logout</button>
+      </div>
+      
+      <div id="dashboard-message"></div>
+      
+      <button id="link-button" class="btn btn-primary">Connect Bank Account</button>
+      <button id="test-connection" class="btn btn-secondary">Test Backend Connection</button>
+    </div>
+  </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
   <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
   <script>
-    (function($) {
-      const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
+    const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
+    let authToken = localStorage.getItem('authToken');
+    let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
-      // Test backend connection
-      $('#test-connection').on('click', async function(e) {
-        const statusDiv = $('#connection-status');
-        statusDiv.text('Testing connection...').css('background-color', '#ffc107').css('color', '#000');
+    // Show appropriate view on page load
+    $(document).ready(function() {
+      if (authToken && currentUser) {
+        showDashboard();
+      } else {
+        showLogin();
+      }
+    });
+
+    function showLogin() {
+      $('#login-view').removeClass('hidden');
+      $('#register-view').addClass('hidden');
+      $('#dashboard-view').addClass('hidden');
+      clearMessages();
+    }
+
+    function showRegister() {
+      $('#login-view').addClass('hidden');
+      $('#register-view').removeClass('hidden');
+      $('#dashboard-view').addClass('hidden');
+      clearMessages();
+    }
+
+    function showDashboard() {
+      $('#login-view').addClass('hidden');
+      $('#register-view').addClass('hidden');
+      $('#dashboard-view').removeClass('hidden');
+      $('#user-email').text(currentUser.email);
+      $('#user-name').text(`${currentUser.first_name || ''} ${currentUser.last_name || ''}`);
+      clearMessages();
+    }
+
+    function clearMessages() {
+      $('#login-message, #register-message, #dashboard-message').html('');
+    }
+
+    function showMessage(containerId, message, type) {
+      $(`#${containerId}`).html(`<div class="message ${type}">${message}</div>`);
+    }
+
+    function logout() {
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('currentUser');
+      authToken = null;
+      currentUser = null;
+      showLogin();
+    }
+
+    // Login form handler
+    $('#login-form').on('submit', async function(e) {
+      e.preventDefault();
+      const email = $('#login-email').val();
+      const password = $('#login-password').val();
+      
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
         
-        try {
-          const response = await fetch(`${BACKEND_URL}/health`);
-          const data = await response.json();
-          
-          if (data.status === 'ok') {
-            statusDiv.text('✓ Backend connected successfully!').css('background-color', '#4caf50').css('color', '#fff');
-          } else {
-            statusDiv.text('⚠ Backend responded but with unexpected status').css('background-color', '#ff9800').css('color', '#fff');
-          }
-        } catch (error) {
-          statusDiv.text('✗ Connection failed: ' + error.message).css('background-color', '#f44336').css('color', '#fff');
-          console.error('Connection error:', error);
+        const data = await response.json();
+        
+        if (response.ok) {
+          authToken = data.token;
+          currentUser = data.user;
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+          showDashboard();
+        } else {
+          showMessage('login-message', data.error || 'Login failed', 'error');
+        }
+      } catch (error) {
+        showMessage('login-message', 'Connection error: ' + error.message, 'error');
+      }
+    });
+
+    // Register form handler
+    $('#register-form').on('submit', async function(e) {
+      e.preventDefault();
+      const firstName = $('#register-firstname').val();
+      const lastName = $('#register-lastname').val();
+      const email = $('#register-email').val();
+      const password = $('#register-password').val();
+      
+      try {
+        const response = await fetch(`${BACKEND_URL}/api/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            password,
+            first_name: firstName,
+            last_name: lastName
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+          authToken = data.token;
+          currentUser = data.user;
+          localStorage.setItem('authToken', authToken);
+          localStorage.setItem('currentUser', JSON.stringify(currentUser));
+          showDashboard();
+        } else {
+          showMessage('register-message', data.error || 'Registration failed', 'error');
+        }
+      } catch (error) {
+        showMessage('register-message', 'Connection error: ' + error.message, 'error');
+      }
+    });
+
+    // Test connection button
+    $('#test-connection').on('click', async function() {
+      try {
+        const response = await fetch(`${BACKEND_URL}/health`);
+        const data = await response.json();
+        
+        if (data.status === 'ok') {
+          showMessage('dashboard-message', '✓ Backend connected successfully!', 'success');
+        } else {
+          showMessage('dashboard-message', '⚠ Unexpected response from backend', 'error');
+        }
+      } catch (error) {
+        showMessage('dashboard-message', '✗ Connection failed: ' + error.message, 'error');
+      }
+    });
+
+    // Plaid integration functions
+    async function fetchLinkToken() {
+      const response = await fetch(`${BACKEND_URL}/api/create_link_token`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
         }
       });
-
-      async function fetchLinkToken() {
-        const response = await fetch(`${BACKEND_URL}/api/create_link_token`);
-        const data = await response.json();
-        return data.link_token;
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to create link token');
       }
+      
+      const data = await response.json();
+      return data.link_token;
+    }
 
-      async function exchangePublicToken(public_token) {
-        const response = await fetch(`${BACKEND_URL}/api/set_access_token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ public_token: public_token }),
-        });
-        const data = await response.json();
-        console.log('Access token received:', data.access_token);
-        // Here, you could fetch transactions or update the UI
+    async function exchangePublicToken(public_token) {
+      const response = await fetch(`${BACKEND_URL}/api/set_access_token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ public_token: public_token })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to connect bank');
       }
+      
+      return data;
+    }
 
-      $('#link-button').on('click', async function(e) {
+    // Connect bank account button
+    $('#link-button').on('click', async function() {
+      if (!authToken) {
+        showMessage('dashboard-message', 'Please login first', 'error');
+        return;
+      }
+      
+      try {
         const linkToken = await fetchLinkToken();
         const handler = Plaid.create({
           token: linkToken,
           onSuccess: async (public_token, metadata) => {
-            await exchangePublicToken(public_token);
-            alert('Bank connected successfully!');
+            try {
+              await exchangePublicToken(public_token);
+              showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+            } catch (error) {
+              showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+            }
           },
           onLoad: () => {
             // Link is ready
           },
           onExit: (err, metadata) => {
             if (err != null) {
-              console.error('Error:', err);
+              console.error('Plaid Link Error:', err);
+              showMessage('dashboard-message', 'Connection cancelled or failed', 'error');
             }
           },
           onEvent: (eventName, metadata) => {
-            console.log('Event:', eventName);
-          },
+            console.log('Plaid Event:', eventName);
+          }
         });
         handler.open();
-      });
+      } catch (error) {
+        showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+      }
+    });
 
-      // If this page is the OAuth redirect target, automatically re-open Link
-      // so Link can complete the OAuth flow. Plaid will append ?oauth_state_id=...
-      // to the URL when redirecting back from the bank.
-      (async function handleOauthReturn() {
-        if (!window.location.href.includes('?oauth_state_id=')) return;
-        try {
-          const linkToken = await fetchLinkToken();
-          const handler = Plaid.create({
-            token: linkToken,
-            receivedRedirectUri: window.location.href,
-            onSuccess: async (public_token, metadata) => {
+    // Handle OAuth redirect
+    (async function handleOauthReturn() {
+      if (!window.location.href.includes('?oauth_state_id=')) return;
+      if (!authToken) return;
+      
+      try {
+        const linkToken = await fetchLinkToken();
+        const handler = Plaid.create({
+          token: linkToken,
+          receivedRedirectUri: window.location.href,
+          onSuccess: async (public_token, metadata) => {
+            try {
               await exchangePublicToken(public_token);
-              alert('Bank connected successfully!');
-            },
-            onLoad: () => {
-              // Link is ready after OAuth redirect
-            },
-            onExit: (err, metadata) => {
-              if (err != null) console.error('Error:', err);
-            },
-            onEvent: (eventName, metadata) => {
-              console.log('Event:', eventName);
-            },
-          });
-          handler.open();
-        } catch (err) {
-          console.error('Error handling OAuth redirect:', err);
-        }
-      })();
-    })(jQuery);
+              showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+            } catch (error) {
+              showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+            }
+          },
+          onLoad: () => {},
+          onExit: (err, metadata) => {
+            if (err != null) console.error('OAuth Error:', err);
+          },
+          onEvent: (eventName, metadata) => {
+            console.log('Event:', eventName);
+          }
+        });
+        handler.open();
+      } catch (err) {
+        console.error('Error handling OAuth redirect:', err);
+      }
+    })();
   </script>
 </body>
 </html>
