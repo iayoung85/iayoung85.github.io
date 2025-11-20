@@ -28,6 +28,16 @@
       max-width: 450px;
       width: 100%;
       padding: 40px;
+      position: relative;
+    }
+    
+    .logo {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
     }
     
     h1 {
@@ -173,6 +183,8 @@
 </head>
 <body>
   <div class="container">
+    <img src="IAY consulting.png" alt="IAY Consulting" class="logo">
+    
     <!-- Login Form -->
     <div id="login-view" class="hidden">
       <h1>Welcome Back</h1>
