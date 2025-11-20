@@ -413,8 +413,13 @@
     });
 
     // Plaid integration functions
-    async function fetchLinkToken() {
-      const response = await fetch(`${BACKEND_URL}/api/create_link_token`, {
+    async function fetchLinkToken(accessToken = null) {
+      let url = `${BACKEND_URL}/api/create_link_token`;
+      if (accessToken) {
+        url += `?access_token=${encodeURIComponent(accessToken)}`;
+      }
+      
+      const response = await fetch(url, {
         headers: {
           'Authorization': `Bearer ${authToken}`
         }
@@ -427,6 +432,21 @@
       
       const data = await response.json();
       return data.link_token;
+    }
+    
+    async function getUserItems() {
+      const response = await fetch(`${BACKEND_URL}/api/items`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch items');
+      }
+      
+      const data = await response.json();
+      return data.items || [];
     }
 
     async function exchangePublicToken(public_token) {
@@ -456,13 +476,52 @@
       }
       
       try {
-        const linkToken = await fetchLinkToken();
+        // Check for existing items
+        const existingItems = await getUserItems();
+        
+        let selectedAccessToken = null;
+        
+        // If user has existing items, ask if they want to update or add new
+        if (existingItems.length > 0) {
+          const action = confirm(
+            `You have ${existingItems.length} bank(s) connected.\n\n` +
+            `Click OK to reconnect/update an existing bank.\n` +
+            `Click Cancel to connect a NEW bank.`
+          );
+          
+          if (action) {
+            // Show list of existing items to update
+            let itemList = 'Select which bank to reconnect:\n\n';
+            existingItems.forEach((item, idx) => {
+              const instName = item.institution_name || item.institution_id || 'Unknown Bank';
+              const status = item.status || 'unknown';
+              itemList += `${idx + 1}. ${instName} (${status})\n`;
+            });
+            
+            const choice = prompt(itemList + '\nEnter number (or Cancel for new connection):');
+            
+            if (choice) {
+              const index = parseInt(choice) - 1;
+              if (index >= 0 && index < existingItems.length) {
+                selectedAccessToken = existingItems[index].access_token;
+              }
+            }
+          }
+        }
+        
+        const linkToken = await fetchLinkToken(selectedAccessToken);
         const handler = Plaid.create({
           token: linkToken,
           onSuccess: async (public_token, metadata) => {
             try {
-              await exchangePublicToken(public_token);
-              showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+              if (selectedAccessToken) {
+                // Update mode - just show success, don't exchange token again
+                showMessage('dashboard-message', '✓ Bank reconnected successfully!', 'success');
+              } else {
+                // New connection - exchange token
+                await exchangePublicToken(public_token);
+                showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+              }
             } catch (error) {
               showMessage('dashboard-message', 'Error: ' + error.message, 'error');
             }
