@@ -485,26 +485,46 @@
         if (existingItems.length > 0) {
           const action = confirm(
             `You have ${existingItems.length} bank(s) connected.\n\n` +
-            `Click OK to reconnect/update an existing bank.\n` +
-            `Click Cancel to connect a NEW bank.`
+            `Click OK to RECONNECT/UPDATE an existing bank.\n` +
+            `Click Cancel to ADD A NEW bank.`
           );
           
           if (action) {
             // Show list of existing items to update
-            let itemList = 'Select which bank to reconnect:\n\n';
+            let itemList = 'Which bank do you want to reconnect?\n\n';
             existingItems.forEach((item, idx) => {
               const instName = item.institution_name || item.institution_id || 'Unknown Bank';
               const status = item.status || 'unknown';
               itemList += `${idx + 1}. ${instName} (${status})\n`;
             });
             
-            const choice = prompt(itemList + '\nEnter number (or Cancel for new connection):');
+            // Build valid options text
+            const validOptions = existingItems.map((_, idx) => idx + 1).join(', ');
+            itemList += `\nEnter ${validOptions} to select a bank, or click Cancel to add a new bank instead.`;
+            
+            let choice = null;
+            let validInput = false;
+            
+            while (!validInput) {
+              const input = prompt(itemList);
+              
+              if (input === null) {
+                // User clicked Cancel
+                break;
+              }
+              
+              const num = parseInt(input);
+              if (!isNaN(num) && num >= 1 && num <= existingItems.length) {
+                choice = input;
+                validInput = true;
+              } else {
+                alert(`Invalid input. Please enter a number between 1 and ${existingItems.length}.`);
+              }
+            }
             
             if (choice) {
               const index = parseInt(choice) - 1;
-              if (index >= 0 && index < existingItems.length) {
-                selectedAccessToken = existingItems[index].access_token;
-              }
+              selectedAccessToken = existingItems[index].access_token;
             }
           }
         }
