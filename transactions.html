@@ -251,12 +251,17 @@
     
     // Check authentication
     const token = localStorage.getItem('token');
+    console.log('Token check:', token ? 'Token found' : 'No token found');
+    
     if (!token) {
+      console.log('No token, redirecting to index.html');
+      alert('Please log in first');
       window.location.href = 'index.html';
     }
     
     // Initialize
     $(document).ready(function() {
+      console.log('Page loaded, initializing...');
       loadAccounts();
       setDefaultDates();
     });
