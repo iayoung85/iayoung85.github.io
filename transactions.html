@@ -327,6 +327,7 @@
         
         accounts = data.accounts || [];
         console.log('Accounts loaded:', accounts.length);
+        console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type})`));
         renderAccountSelector();
         showStatus('Accounts loaded successfully', 'success');
         setTimeout(() => clearStatus(), 2000);
