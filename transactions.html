@@ -250,7 +250,7 @@
     let synced = false;
     
     // Check authentication
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('authToken');
     console.log('Token check:', token ? 'Token found' : 'No token found');
     
     if (!token) {
