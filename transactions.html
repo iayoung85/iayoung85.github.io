@@ -284,15 +284,23 @@
     
     async function loadAccounts() {
       try {
-        console.log('loadAccounts() called');
+        console.log('=== loadAccounts() START ===');
         console.log('Token:', token);
         console.log('BACKEND_URL:', BACKEND_URL);
         
         showStatus('Loading accounts...', 'info');
         
         const url = `${BACKEND_URL}/api/accounts`;
-        console.log('Fetching from:', url);
+        console.log('Fetch URL:', url);
+        console.log('Fetch options:', {
+          method: 'GET',
+          mode: 'cors',
+          headers: {
+            'Authorization': `Bearer ${token ? token.substring(0, 20) + '...' : 'NULL'}`
+          }
+        });
         
+        console.log('About to call fetch...');
         const response = await fetch(url, {
           method: 'GET',
           mode: 'cors',
@@ -301,11 +309,14 @@
           }
         });
         
+        console.log('Fetch completed!');
         console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
         console.log('Response headers:', response.headers);
         
         const data = await response.json();
         console.log('Response data:', data);
+        console.log('=== loadAccounts() END ===');
         
         if (data.error) {
           showStatus(`Error: ${data.error}`, 'error');
