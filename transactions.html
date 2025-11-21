@@ -290,11 +290,12 @@
         
         showStatus('Loading accounts...', 'info');
         
-        const url = `${BACKEND_URL}/api/accounts`;
+        const url = `${BACKEND_URL}/api/accounts?t=${Date.now()}`;
         console.log('Fetch URL:', url);
         console.log('Fetch options:', {
           method: 'GET',
           mode: 'cors',
+          cache: 'no-cache',
           headers: {
             'Authorization': `Bearer ${token ? token.substring(0, 20) + '...' : 'NULL'}`
           }
@@ -304,6 +305,7 @@
         const response = await fetch(url, {
           method: 'GET',
           mode: 'cors',
+          cache: 'no-cache',
           headers: {
             'Authorization': `Bearer ${token}`
           }
