@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transaction Viewer - Bank Transactions</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin-top: 0;
+      color: #333;
+    }
+    .config-panel {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+    .config-header {
+      background: #f8f8f8;
+      padding: 12px 16px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 600;
+    }
+    .config-content {
+      padding: 16px;
+      display: none;
+    }
+    .config-content.open {
+      display: block;
+    }
+    .config-section {
+      margin-bottom: 20px;
+    }
+    .config-section h3 {
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 16px;
+      color: #555;
+    }
+    .account-group {
+      margin-bottom: 12px;
+      padding: 8px;
+      background: #f9f9f9;
+      border-radius: 4px;
+    }
+    .account-item {
+      margin-left: 24px;
+      margin-top: 4px;
+    }
+    label {
+      display: block;
+      margin-bottom: 4px;
+      cursor: pointer;
+    }
+    input[type="checkbox"] {
+      margin-right: 8px;
+    }
+    input[type="date"], select {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-right: 8px;
+    }
+    button {
+      padding: 10px 20px;
+      background: #0070f3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #0051cc;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #666;
+    }
+    button.secondary:hover {
+      background: #444;
+    }
+    .status-message {
+      padding: 12px;
+      margin-top: 12px;
+      border-radius: 4px;
+    }
+    .status-message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    .status-message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    .status-message.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    thead {
+      position: sticky;
+      top: 0;
+      background: #f8f8f8;
+      z-index: 10;
+    }
+    th {
+      text-align: left;
+      padding: 12px;
+      border-bottom: 2px solid #ddd;
+      font-weight: 600;
+      color: #333;
+    }
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid #eee;
+    }
+    tr:nth-child(even) {
+      background: #fafafa;
+    }
+    tr:hover {
+      background: #f0f0f0;
+    }
+    .export-buttons {
+      margin-top: 20px;
+      display: flex;
+      gap: 10px;
+    }
+    .hidden {
+      display: none;
+    }
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #999;
+    }
+    .back-link {
+      display: inline-block;
+      margin-bottom: 20px;
+      color: #0070f3;
+      text-decoration: none;
+    }
+    .back-link:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="index.html" class="back-link">← Back to Dashboard</a>
+    
+    <h1>Transaction Viewer</h1>
+    
+    <!-- Configuration Panel -->
+    <div class="config-panel">
+      <div class="config-header" onclick="toggleConfig()">
+        <span>Configuration</span>
+        <span id="toggle-icon">▼</span>
+      </div>
+      <div class="config-content" id="config-content">
+        
+        <!-- Bank & Account Selection -->
+        <div class="config-section">
+          <h3>Select Accounts</h3>
+          <div id="account-selector"></div>
+        </div>
+        
+        <!-- Date Range -->
+        <div class="config-section">
+          <h3>Date Range (1-60 days)</h3>
+          <input type="date" id="start-date">
+          <input type="date" id="end-date">
+        </div>
+        
+        <!-- Timezone -->
+        <div class="config-section">
+          <h3>Timezone</h3>
+          <select id="timezone">
+            <option value="America/New_York">Eastern Time (ET)</option>
+            <option value="America/Chicago">Central Time (CT)</option>
+            <option value="America/Denver">Mountain Time (MT)</option>
+            <option value="America/Los_Angeles">Pacific Time (PT)</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="config-section">
+          <button onclick="syncTransactions()">Sync Transactions</button>
+          <button onclick="loadTransactions()" id="load-btn" disabled>Load Data</button>
+          <div id="status-message"></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- Transaction Table -->
+    <div id="table-container">
+      <div class="empty-state">
+        Configure your settings above and click "Sync Transactions" to get started.
+      </div>
+    </div>
+    
+    <!-- Export Buttons -->
+    <div class="export-buttons hidden" id="export-buttons">
+      <button onclick="exportJSON()">Export JSON</button>
+      <button onclick="copyCSV()">Copy CSV to Clipboard</button>
+      <button onclick="downloadCSV()">Download CSV</button>
+    </div>
+    
+  </div>
+
+  <script>
+    const BACKEND_URL = 'https://python-plaid-backend-production.up.railway.app';
+    let accounts = [];
+    let transactions = [];
+    let synced = false;
+    
+    // Check authentication
+    const token = localStorage.getItem('token');
+    if (!token) {
+      window.location.href = 'index.html';
+    }
+    
+    // Initialize
+    $(document).ready(function() {
+      loadAccounts();
+      setDefaultDates();
+    });
+    
+    function setDefaultDates() {
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - 7); // Default to last 7 days
+      
+      document.getElementById('start-date').value = start.toISOString().split('T')[0];
+      document.getElementById('end-date').value = end.toISOString().split('T')[0];
+    }
+    
+    function toggleConfig() {
+      const content = document.getElementById('config-content');
+      const icon = document.getElementById('toggle-icon');
+      content.classList.toggle('open');
+      icon.textContent = content.classList.contains('open') ? '▲' : '▼';
+    }
+    
+    async function loadAccounts() {
+      try {
+        showStatus('Loading accounts...', 'info');
+        
+        const response = await fetch(`${BACKEND_URL}/api/accounts`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          showStatus(`Error: ${data.error}`, 'error');
+          return;
+        }
+        
+        accounts = data.accounts || [];
+        renderAccountSelector();
+        showStatus('Accounts loaded successfully', 'success');
+        setTimeout(() => clearStatus(), 2000);
+        
+      } catch (error) {
+        showStatus(`Failed to load accounts: ${error.message}`, 'error');
+      }
+    }
+    
+    function renderAccountSelector() {
+      const container = document.getElementById('account-selector');
+      
+      if (accounts.length === 0) {
+        container.innerHTML = '<p>No accounts found. Please connect a bank first.</p>';
+        return;
+      }
+      
+      // Group by institution
+      const grouped = {};
+      accounts.forEach(acc => {
+        if (!grouped[acc.institution_name]) {
+          grouped[acc.institution_name] = [];
+        }
+        grouped[acc.institution_name].push(acc);
+      });
+      
+      let html = '';
+      Object.keys(grouped).forEach(institution => {
+        html += `
+          <div class="account-group">
+            <label>
+              <input type="checkbox" class="bank-checkbox" data-bank="${institution}" 
+                     onchange="toggleBank('${institution}')">
+              <strong>${institution}</strong>
+            </label>
+        `;
+        
+        grouped[institution].forEach(acc => {
+          const displayName = `${acc.account_name} (${acc.account_subtype || acc.account_type})${acc.mask ? ' ...' + acc.mask : ''}`;
+          html += `
+            <div class="account-item">
+              <label>
+                <input type="checkbox" class="account-checkbox" 
+                       data-bank="${institution}"
+                       data-account-id="${acc.plaid_account_id}">
+                ${displayName}
+              </label>
+            </div>
+          `;
+        });
+        
+        html += '</div>';
+      });
+      
+      container.innerHTML = html;
+    }
+    
+    function toggleBank(institution) {
+      const bankCheckbox = $(`.bank-checkbox[data-bank="${institution}"]`);
+      const accountCheckboxes = $(`.account-checkbox[data-bank="${institution}"]`);
+      accountCheckboxes.prop('checked', bankCheckbox.prop('checked'));
+    }
+    
+    async function syncTransactions() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      const selectedAccounts = getSelectedAccounts();
+      
+      if (!startDate || !endDate) {
+        showStatus('Please select a date range', 'error');
+        return;
+      }
+      
+      if (selectedAccounts.length === 0) {
+        showStatus('Please select at least one account', 'error');
+        return;
+      }
+      
+      // Validate date range
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const daysDiff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+      
+      if (daysDiff < 1 || daysDiff > 60) {
+        showStatus('Date range must be between 1 and 60 days', 'error');
+        return;
+      }
+      
+      try {
+        showStatus('Syncing transactions from Plaid...', 'info');
+        
+        const response = await fetch(`${BACKEND_URL}/api/sync_transactions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            start_date: startDate,
+            end_date: endDate,
+            account_ids: selectedAccounts
+          })
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          showStatus(`Error: ${data.error}`, 'error');
+          return;
+        }
+        
+        showStatus(`Synced ${data.synced_count} transactions (${data.new_count} new, ${data.updated_count} updated)`, 'success');
+        synced = true;
+        document.getElementById('load-btn').disabled = false;
+        
+      } catch (error) {
+        showStatus(`Sync failed: ${error.message}`, 'error');
+      }
+    }
+    
+    async function loadTransactions() {
+      const startDate = document.getElementById('start-date').value;
+      const endDate = document.getElementById('end-date').value;
+      const selectedAccounts = getSelectedAccounts();
+      const timezone = document.getElementById('timezone').value;
+      
+      try {
+        showStatus('Loading transactions...', 'info');
+        
+        const params = new URLSearchParams({
+          start_date: startDate,
+          end_date: endDate,
+          timezone: timezone
+        });
+        
+        selectedAccounts.forEach(id => {
+          params.append('account_ids[]', id);
+        });
+        
+        const response = await fetch(`${BACKEND_URL}/api/transactions?${params}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.error) {
+          showStatus(`Error: ${data.error}`, 'error');
+          return;
+        }
+        
+        transactions = data.transactions || [];
+        renderTransactionTable();
+        showStatus(`Loaded ${transactions.length} transactions`, 'success');
+        setTimeout(() => clearStatus(), 2000);
+        
+      } catch (error) {
+        showStatus(`Load failed: ${error.message}`, 'error');
+      }
+    }
+    
+    function renderTransactionTable() {
+      const container = document.getElementById('table-container');
+      
+      if (transactions.length === 0) {
+        container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
+        document.getElementById('export-buttons').classList.add('hidden');
+        return;
+      }
+      
+      let html = '<table><thead><tr>';
+      html += '<th>Date/Time</th>';
+      html += '<th>Bank/Account</th>';
+      html += '<th>Description</th>';
+      html += '<th>Amount</th>';
+      html += '</tr></thead><tbody>';
+      
+      transactions.forEach(txn => {
+        const datetime = new Date(txn.datetime).toLocaleString();
+        const amount = new Intl.NumberFormat('en-US', { 
+          style: 'currency', 
+          currency: txn.iso_currency_code || 'USD' 
+        }).format(txn.amount);
+        
+        html += '<tr>';
+        html += `<td>${datetime}</td>`;
+        html += `<td>${txn.bank_account}</td>`;
+        html += `<td>${txn.name || ''}</td>`;
+        html += `<td>${amount}</td>`;
+        html += '</tr>';
+      });
+      
+      html += '</tbody></table>';
+      container.innerHTML = html;
+      document.getElementById('export-buttons').classList.remove('hidden');
+    }
+    
+    function getSelectedAccounts() {
+      const selected = [];
+      $('.account-checkbox:checked').each(function() {
+        selected.push($(this).data('account-id'));
+      });
+      return selected;
+    }
+    
+    function exportJSON() {
+      const dataStr = JSON.stringify(transactions, null, 2);
+      const dataBlob = new Blob([dataStr], {type: 'application/json'});
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `transactions_${getDateRange()}.json`;
+      link.click();
+    }
+    
+    function copyCSV() {
+      const csv = generateCSV();
+      navigator.clipboard.writeText(csv).then(() => {
+        showStatus('CSV copied to clipboard!', 'success');
+        setTimeout(() => clearStatus(), 2000);
+      }).catch(err => {
+        showStatus('Failed to copy to clipboard', 'error');
+      });
+    }
+    
+    function downloadCSV() {
+      const csv = generateCSV();
+      const dataBlob = new Blob([csv], {type: 'text/csv'});
+      const url = URL.createObjectURL(dataBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `transactions_${getDateRange()}.csv`;
+      link.click();
+    }
+    
+    function generateCSV() {
+      let csv = 'Date/Time,Bank/Account,Description,Amount\n';
+      transactions.forEach(txn => {
+        const datetime = new Date(txn.datetime).toLocaleString();
+        const amount = txn.amount;
+        const name = (txn.name || '').replace(/"/g, '""');
+        csv += `"${datetime}","${txn.bank_account}","${name}",${amount}\n`;
+      });
+      return csv;
+    }
+    
+    function getDateRange() {
+      const start = document.getElementById('start-date').value;
+      const end = document.getElementById('end-date').value;
+      return `${start}_to_${end}`;
+    }
+    
+    function showStatus(message, type) {
+      const statusDiv = document.getElementById('status-message');
+      statusDiv.className = `status-message ${type}`;
+      statusDiv.textContent = message;
+      statusDiv.style.display = 'block';
+    }
+    
+    function clearStatus() {
+      const statusDiv = document.getElementById('status-message');
+      statusDiv.style.display = 'none';
+    }
+  </script>
+</body>
+</html>
