@@ -182,7 +182,7 @@
   <div class="container">
     <a href="index.html" class="back-link">← Back to Dashboard</a>
     
-    <h1>Transaction Viewer</h1>
+    <h1>Transaction Viewer HELLO</h1>
     
     <!-- Configuration Panel -->
     <div class="config-panel">
@@ -294,6 +294,8 @@
         console.log('Fetching from:', url);
         
         const response = await fetch(url, {
+          method: 'GET',
+          mode: 'cors',
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -406,6 +408,7 @@
         
         const response = await fetch(`${BACKEND_URL}/api/sync_transactions`, {
           method: 'POST',
+          mode: 'cors',
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -453,6 +456,8 @@
         });
         
         const response = await fetch(`${BACKEND_URL}/api/transactions?${params}`, {
+          method: 'GET',
+          mode: 'cors',
           headers: {
             'Authorization': `Bearer ${token}`
           }
