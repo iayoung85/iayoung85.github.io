@@ -176,6 +176,23 @@
     .back-link:hover {
       text-decoration: underline;
     }
+    .disconnected-badge {
+      display: inline-block;
+      background: #ff9800;
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-left: 6px;
+      font-weight: 600;
+    }
+    .disconnected-account {
+      opacity: 0.8;
+    }
+    .disconnected-group {
+      border-left: 3px solid #ff9800;
+      padding-left: 8px;
+    }
   </style>
 </head>
 <body>
@@ -290,7 +307,8 @@
         
         showStatus('Loading accounts...', 'info');
         
-        const url = `${BACKEND_URL}/api/accounts?t=${Date.now()}`;
+        // Use new endpoint that gets all accounts including disconnected ones
+        const url = `${BACKEND_URL}/api/accounts/all?t=${Date.now()}`;
         console.log('Fetch URL:', url);
         console.log('Fetch options:', {
           method: 'GET',
@@ -327,7 +345,7 @@
         
         accounts = data.accounts || [];
         console.log('Accounts loaded:', accounts.length);
-        console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type})`));
+        console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type}) ${a.is_disconnected ? '[DISCONNECTED]' : ''}`));
         renderAccountSelector();
         showStatus('Accounts loaded successfully', 'success');
         setTimeout(() => clearStatus(), 2000);
@@ -349,32 +367,45 @@
       // Group by institution
       const grouped = {};
       accounts.forEach(acc => {
-        if (!grouped[acc.institution_name]) {
-          grouped[acc.institution_name] = [];
+        const institutionKey = acc.institution_name + (acc.is_disconnected ? '_disconnected' : '_active');
+        if (!grouped[institutionKey]) {
+          grouped[institutionKey] = {
+            name: acc.institution_name,
+            isDisconnected: acc.is_disconnected,
+            accounts: []
+          };
         }
-        grouped[acc.institution_name].push(acc);
+        grouped[institutionKey].accounts.push(acc);
       });
       
       let html = '';
-      Object.keys(grouped).forEach(institution => {
+      Object.keys(grouped).forEach(key => {
+        const group = grouped[key];
+        const disconnectedClass = group.isDisconnected ? 'disconnected-group' : '';
+        const disconnectedBadge = group.isDisconnected ? '<span class="disconnected-badge">DISCONNECTED</span>' : '';
+        
         html += `
-          <div class="account-group">
+          <div class="account-group ${disconnectedClass}">
             <label>
-              <input type="checkbox" class="bank-checkbox" data-bank="${institution}" 
-                     onchange="toggleBank('${institution}')">
-              <strong>${institution}</strong>
+              <input type="checkbox" class="bank-checkbox" data-bank="${key}" 
+                     onchange="toggleBank('${key}')">
+              <strong>${group.name}</strong>${disconnectedBadge}
             </label>
         `;
         
-        grouped[institution].forEach(acc => {
+        group.accounts.forEach(acc => {
           const displayName = `${acc.account_name} (${acc.account_subtype || acc.account_type})${acc.mask ? ' ...' + acc.mask : ''}`;
+          const accountClass = acc.is_disconnected ? 'disconnected-account' : '';
+          const warningText = acc.is_disconnected ? ' ⚠️ No new transactions will sync' : '';
+          
           html += `
-            <div class="account-item">
+            <div class="account-item ${accountClass}">
               <label>
                 <input type="checkbox" class="account-checkbox" 
-                       data-bank="${institution}"
-                       data-account-id="${acc.plaid_account_id}">
-                ${displayName}
+                       data-bank="${key}"
+                       data-account-id="${acc.plaid_account_id}"
+                       data-disconnected="${acc.is_disconnected}">
+                ${displayName}${warningText}
               </label>
             </div>
           `;
@@ -407,6 +438,21 @@
         return;
       }
       
+      // Check if any selected accounts are disconnected
+      const disconnectedSelected = [];
+      const activeAccounts = [];
+      
+      $('.account-checkbox:checked').each(function() {
+        const accountId = $(this).data('account-id');
+        const isDisconnected = $(this).data('disconnected');
+        
+        if (isDisconnected === true || isDisconnected === 'true') {
+          disconnectedSelected.push(accountId);
+        } else {
+          activeAccounts.push(accountId);
+        }
+      });
+      
       // Validate date range
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -417,8 +463,20 @@
         return;
       }
       
+      // If only disconnected accounts selected, skip sync and go straight to load
+      if (activeAccounts.length === 0 && disconnectedSelected.length > 0) {
+        showStatus(`⚠️ Selected ${disconnectedSelected.length} disconnected account(s). Skipping sync - you can view existing transactions.`, 'info');
+        synced = true;
+        document.getElementById('load-btn').disabled = false;
+        return;
+      }
+      
       try {
-        showStatus('Syncing transactions from Plaid...', 'info');
+        let statusMsg = 'Syncing transactions from Plaid...';
+        if (disconnectedSelected.length > 0) {
+          statusMsg += ` (Skipping ${disconnectedSelected.length} disconnected account(s))`;
+        }
+        showStatus(statusMsg, 'info');
         
         const response = await fetch(`${BACKEND_URL}/api/sync_transactions`, {
           method: 'POST',
@@ -430,7 +488,7 @@
           body: JSON.stringify({
             start_date: startDate,
             end_date: endDate,
-            account_ids: selectedAccounts
+            account_ids: activeAccounts  // Only send active accounts for syncing
           })
         });
         
@@ -441,7 +499,11 @@
           return;
         }
         
-        showStatus(`Synced ${data.synced_count} transactions (${data.new_count} new, ${data.updated_count} updated)`, 'success');
+        let successMsg = `Synced ${data.synced_count} transactions (${data.new_count} new, ${data.updated_count} updated)`;
+        if (disconnectedSelected.length > 0) {
+          successMsg += `. Note: ${disconnectedSelected.length} disconnected account(s) were not synced.`;
+        }
+        showStatus(successMsg, 'success');
         synced = true;
         document.getElementById('load-btn').disabled = false;
         
