@@ -465,7 +465,7 @@
       
       // If only disconnected accounts selected, skip sync and go straight to load
       if (activeAccounts.length === 0 && disconnectedSelected.length > 0) {
-        showStatus(`⚠️ Selected ${disconnectedSelected.length} disconnected account(s). Skipping sync - you can view existing transactions.`, 'info');
+        showStatus(`⚠️ Selected ${disconnectedSelected.length} disconnected account(s). These accounts are no longer connected to Plaid. You can view existing historical transactions, but cannot sync new ones.`, 'warning');
         synced = true;
         document.getElementById('load-btn').disabled = false;
         return;
@@ -499,9 +499,9 @@
           return;
         }
         
-        let successMsg = `Synced ${data.synced_count} transactions (${data.new_count} new, ${data.updated_count} updated)`;
+        let successMsg = `Synced ${data.synced_count || 0} transactions (${data.new_count || 0} new, ${data.updated_count || 0} updated) from ${activeAccounts.length} active account(s)`;
         if (disconnectedSelected.length > 0) {
-          successMsg += `. Note: ${disconnectedSelected.length} disconnected account(s) were not synced.`;
+          successMsg += `. ${disconnectedSelected.length} disconnected account(s) were skipped - their historical transactions remain available.`;
         }
         showStatus(successMsg, 'success');
         synced = true;
