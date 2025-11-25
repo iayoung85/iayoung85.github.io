@@ -566,21 +566,26 @@
       }
       
       let html = '<table><thead><tr>';
-      html += '<th>Date/Time</th>';
+      html += '<th>Date</th>';
       html += '<th>Bank/Account</th>';
       html += '<th>Description</th>';
       html += '<th>Amount</th>';
       html += '</tr></thead><tbody>';
       
       transactions.forEach(txn => {
-        const datetime = new Date(txn.datetime).toLocaleString();
+        // Use the posted date (YYYY-MM-DD) directly
+        // Create a date object but use UTC methods to avoid timezone shifts
+        // since the date string is already just a date
+        const dateParts = txn.date.split('-');
+        const dateStr = `${dateParts[1]}/${dateParts[2]}/${dateParts[0]}`; // MM/DD/YYYY
+        
         const amount = new Intl.NumberFormat('en-US', { 
           style: 'currency', 
           currency: txn.iso_currency_code || 'USD' 
         }).format(txn.amount);
         
         html += '<tr>';
-        html += `<td>${datetime}</td>`;
+        html += `<td>${dateStr}</td>`;
         html += `<td>${txn.bank_account}</td>`;
         html += `<td>${txn.name || ''}</td>`;
         html += `<td>${amount}</td>`;
@@ -631,12 +636,13 @@
     }
     
     function generateCSV() {
-      let csv = 'Date/Time,Bank/Account,Description,Amount\n';
+      let csv = 'Date,Bank/Account,Description,Amount\n';
       transactions.forEach(txn => {
-        const datetime = new Date(txn.datetime).toLocaleString();
+        const dateParts = txn.date.split('-');
+        const dateStr = `${dateParts[1]}/${dateParts[2]}/${dateParts[0]}`; // MM/DD/YYYY
         const amount = txn.amount;
         const name = (txn.name || '').replace(/"/g, '""');
-        csv += `"${datetime}","${txn.bank_account}","${name}",${amount}\n`;
+        csv += `"${dateStr}","${txn.bank_account}","${name}",${amount}\n`;
       });
       return csv;
     }
