@@ -286,7 +286,7 @@
     function setDefaultDates() {
       const end = new Date();
       const start = new Date();
-      start.setDate(start.getDate() - 7); // Default to last 7 days
+      start.setDate(1); // Default to first of the month
       
       document.getElementById('start-date').value = start.toISOString().split('T')[0];
       document.getElementById('end-date').value = end.toISOString().split('T')[0];
