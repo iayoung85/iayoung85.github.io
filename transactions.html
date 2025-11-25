@@ -216,7 +216,10 @@
         
         <!-- Bank & Account Selection -->
         <div class="config-section">
-          <h3>Select Accounts</h3>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="margin: 0;">Select Accounts</h3>
+            <button onclick="refreshAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Refresh List</button>
+          </div>
           <div id="account-selector"></div>
         </div>
         
@@ -324,6 +327,28 @@
       icon.textContent = content.classList.contains('open') ? '▲' : '▼';
     }
     
+    async function refreshAccounts() {
+      try {
+        showStatus('Syncing accounts from Plaid...', 'info');
+        const response = await fetch(`${BACKEND_URL}/api/accounts`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to refresh accounts');
+        }
+        
+        await loadAccounts();
+        showStatus('Accounts refreshed successfully', 'success');
+        setTimeout(() => clearStatus(), 2000);
+      } catch (error) {
+        console.error('refreshAccounts error:', error);
+        showStatus(`Failed to refresh accounts: ${error.message}`, 'error');
+      }
+    }
+
     async function loadAccounts() {
       try {
         console.log('=== loadAccounts() START ===');
