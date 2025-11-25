@@ -259,6 +259,13 @@
       
       <div id="dashboard-message"></div>
       
+      <div class="form-group" style="margin-bottom: 10px;">
+        <label style="display: flex; align-items: center; cursor: pointer;">
+          <input type="checkbox" id="investment-mode" style="width: auto; margin-right: 10px;">
+          Link Investment Account (e.g. Robinhood)
+        </label>
+      </div>
+
       <button id="link-button" class="btn btn-primary">Connect Bank Account</button>
       <button id="test-connection" class="btn btn-secondary">Test Backend Connection</button>
     </div>
@@ -414,10 +421,10 @@
     });
 
     // Plaid integration functions
-    async function fetchLinkToken(accessToken = null) {
-      let url = `${BACKEND_URL}/api/create_link_token`;
+    async function fetchLinkToken(accessToken = null, mode = 'standard') {
+      let url = `${BACKEND_URL}/api/create_link_token?mode=${mode}`;
       if (accessToken) {
-        url += `?access_token=${encodeURIComponent(accessToken)}`;
+        url += `&access_token=${encodeURIComponent(accessToken)}`;
       }
       
       const response = await fetch(url, {
@@ -530,7 +537,10 @@
           }
         }
         
-        const linkToken = await fetchLinkToken(selectedAccessToken);
+        const isInvestment = $('#investment-mode').is(':checked');
+        const mode = isInvestment ? 'investment' : 'standard';
+        
+        const linkToken = await fetchLinkToken(selectedAccessToken, mode);
         const handler = Plaid.create({
           token: linkToken,
           onSuccess: async (public_token, metadata) => {
