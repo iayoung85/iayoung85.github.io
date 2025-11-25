@@ -193,6 +193,11 @@
       border-left: 3px solid #ff9800;
       padding-left: 8px;
     }
+    .optional-fields-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px;
+    }
   </style>
 </head>
 <body>
@@ -232,6 +237,21 @@
             <option value="America/Los_Angeles">Pacific Time (PT)</option>
             <option value="UTC">UTC</option>
           </select>
+        </div>
+
+        <!-- Optional Fields -->
+        <div class="config-section">
+          <h3>Optional Fields</h3>
+          <div class="optional-fields-grid">
+            <label><input type="checkbox" class="field-checkbox" value="merchant_name"> Merchant Name</label>
+            <label><input type="checkbox" class="field-checkbox" value="category"> Category</label>
+            <label><input type="checkbox" class="field-checkbox" value="payment_channel"> Payment Channel</label>
+            <label><input type="checkbox" class="field-checkbox" value="pending"> Pending Status</label>
+            <label><input type="checkbox" class="field-checkbox" value="check_number"> Check Number</label>
+            <label><input type="checkbox" class="field-checkbox" value="original_description"> Original Description</label>
+            <label><input type="checkbox" class="field-checkbox" value="authorized_date"> Authorized Date</label>
+            <label><input type="checkbox" class="field-checkbox" value="authorized_datetime"> Authorized Time</label>
+          </div>
         </div>
         
         <!-- Action Buttons -->
@@ -281,6 +301,11 @@
       console.log('Page loaded, initializing...');
       loadAccounts();
       setDefaultDates();
+      
+      // Add event listener for optional fields
+      $(document).on('change', '.field-checkbox', function() {
+        renderTransactionTable();
+      });
     });
     
     function setDefaultDates() {
@@ -564,12 +589,29 @@
         document.getElementById('export-buttons').classList.add('hidden');
         return;
       }
+
+      // Get selected optional fields
+      const optionalFields = [];
+      $('.field-checkbox:checked').each(function() {
+        optionalFields.push($(this).val());
+      });
       
       let html = '<table><thead><tr>';
       html += '<th>Date</th>';
       html += '<th>Bank/Account</th>';
       html += '<th>Description</th>';
       html += '<th>Amount</th>';
+      
+      // Add optional headers
+      if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
+      if (optionalFields.includes('category')) html += '<th>Category</th>';
+      if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
+      if (optionalFields.includes('pending')) html += '<th>Pending</th>';
+      if (optionalFields.includes('check_number')) html += '<th>Check #</th>';
+      if (optionalFields.includes('original_description')) html += '<th>Original Desc</th>';
+      if (optionalFields.includes('authorized_date')) html += '<th>Auth Date</th>';
+      if (optionalFields.includes('authorized_datetime')) html += '<th>Auth Time</th>';
+
       html += '</tr></thead><tbody>';
       
       transactions.forEach(txn => {
@@ -593,6 +635,42 @@
         html += `<td>${txn.bank_account}</td>`;
         html += `<td>${txn.name || ''}</td>`;
         html += `<td>${amount}</td>`;
+
+        // Add optional cells
+        if (optionalFields.includes('merchant_name')) html += `<td>${txn.merchant_name || ''}</td>`;
+        if (optionalFields.includes('category')) {
+            let cat = txn.category;
+            // Handle PostgreSQL array string format if necessary, or JSON array
+            if (typeof cat === 'string' && cat.startsWith('{')) {
+                // Simple cleanup for {Category,Subcategory} format
+                cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
+            } else if (Array.isArray(cat)) {
+                cat = cat.join(', ');
+            }
+            html += `<td>${cat || ''}</td>`;
+        }
+        if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
+        if (optionalFields.includes('pending')) html += `<td>${txn.pending ? 'Yes' : 'No'}</td>`;
+        if (optionalFields.includes('check_number')) html += `<td>${txn.check_number || ''}</td>`;
+        if (optionalFields.includes('original_description')) html += `<td>${txn.original_description || ''}</td>`;
+        if (optionalFields.includes('authorized_date')) html += `<td>${txn.authorized_date || ''}</td>`;
+        if (optionalFields.includes('authorized_datetime')) {
+            let authTime = '';
+            if (txn.authorized_datetime) {
+                const dt = new Date(txn.authorized_datetime);
+                authTime = dt.toLocaleString('en-US', {
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit',
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    second: '2-digit',
+                    timeZoneName: 'short'
+                });
+            }
+            html += `<td>${authTime}</td>`;
+        }
+
         html += '</tr>';
       });
       
@@ -640,7 +718,26 @@
     }
     
     function generateCSV() {
-      let csv = 'Date,Bank/Account,Description,Amount\n';
+      // Get selected optional fields
+      const optionalFields = [];
+      $('.field-checkbox:checked').each(function() {
+        optionalFields.push($(this).val());
+      });
+
+      let csv = 'Date,Bank/Account,Description,Amount';
+      
+      // Add optional headers
+      if (optionalFields.includes('merchant_name')) csv += ',Merchant';
+      if (optionalFields.includes('category')) csv += ',Category';
+      if (optionalFields.includes('payment_channel')) csv += ',Channel';
+      if (optionalFields.includes('pending')) csv += ',Pending';
+      if (optionalFields.includes('check_number')) csv += ',Check #';
+      if (optionalFields.includes('original_description')) csv += ',Original Desc';
+      if (optionalFields.includes('authorized_date')) csv += ',Auth Date';
+      if (optionalFields.includes('authorized_datetime')) csv += ',Auth Time';
+      
+      csv += '\n';
+
       transactions.forEach(txn => {
         const dateObj = new Date(txn.date);
         const dateStr = dateObj.toLocaleDateString('en-US', {
@@ -651,7 +748,43 @@
         });
         const amount = txn.amount;
         const name = (txn.name || '').replace(/"/g, '""');
-        csv += `"${dateStr}","${txn.bank_account}","${name}",${amount}\n`;
+        
+        csv += `"${dateStr}","${txn.bank_account}","${name}",${amount}`;
+        
+        // Add optional fields
+        if (optionalFields.includes('merchant_name')) csv += `,"${(txn.merchant_name || '').replace(/"/g, '""')}"`;
+        if (optionalFields.includes('category')) {
+            let cat = txn.category;
+            if (typeof cat === 'string' && cat.startsWith('{')) {
+                cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
+            } else if (Array.isArray(cat)) {
+                cat = cat.join(', ');
+            }
+            csv += `,"${(cat || '').replace(/"/g, '""')}"`;
+        }
+        if (optionalFields.includes('payment_channel')) csv += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
+        if (optionalFields.includes('pending')) csv += `,${txn.pending ? 'Yes' : 'No'}`;
+        if (optionalFields.includes('check_number')) csv += `,"${(txn.check_number || '').replace(/"/g, '""')}"`;
+        if (optionalFields.includes('original_description')) csv += `,"${(txn.original_description || '').replace(/"/g, '""')}"`;
+        if (optionalFields.includes('authorized_date')) csv += `,"${(txn.authorized_date || '').replace(/"/g, '""')}"`;
+        if (optionalFields.includes('authorized_datetime')) {
+            let authTime = '';
+            if (txn.authorized_datetime) {
+                const dt = new Date(txn.authorized_datetime);
+                authTime = dt.toLocaleString('en-US', {
+                    year: 'numeric', 
+                    month: '2-digit', 
+                    day: '2-digit',
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    second: '2-digit',
+                    timeZoneName: 'short'
+                });
+            }
+            csv += `,"${authTime}"`;
+        }
+        
+        csv += '\n';
       });
       return csv;
     }
