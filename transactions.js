@@ -14,6 +14,24 @@ if (!token) {
   window.location.href = 'index.html';
 }
 
+async function authenticatedFetch(url, options = {}) {
+  // Add authorization header
+  const headers = {
+    'Authorization': `Bearer ${token}`,
+    ...options.headers
+  };
+  
+  const response = await fetch(url, { ...options, headers });
+  
+  // If we get a 401, redirect to login (transactions page doesn't handle refresh)
+  if (response.status === 401) {
+    alert('Session expired. Please log in again.');
+    window.location.href = 'index.html';
+  }
+  
+  return response;
+}
+
 // Initialize
 $(document).ready(function() {
   console.log('Page loaded, initializing...');
@@ -85,13 +103,10 @@ async function loadAccounts() {
     });
     
     console.log('About to call fetch...');
-    const response = await fetch(url, {
+    const response = await authenticatedFetch(url, {
       method: 'GET',
       mode: 'cors',
-      cache: 'no-cache',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      cache: 'no-cache'
     });
     
     console.log('Fetch completed!');
@@ -249,11 +264,10 @@ async function syncTransactions() {
     }
     showStatus(statusMsg, 'info');
     
-    const response = await fetch(`${BACKEND_URL}/api/sync_transactions`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/sync_transactions`, {
       method: 'POST',
       mode: 'cors',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
@@ -302,12 +316,9 @@ async function loadTransactions() {
       params.append('account_ids[]', id);
     });
     
-    const response = await fetch(`${BACKEND_URL}/api/transactions?${params}`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions?${params}`, {
       method: 'GET',
-      mode: 'cors',
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
+      mode: 'cors'
     });
     
     const data = await response.json();
@@ -561,10 +572,9 @@ async function promptRename(accountId, currentCustomName) {
   try {
     showStatus('Updating account name...', 'info');
     
-    const response = await fetch(`${BACKEND_URL}/api/accounts/rename`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/rename`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({

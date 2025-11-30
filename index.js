@@ -1,6 +1,9 @@
-// const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
-const BACKEND_URL = 'http://127.0.0.1:3000';
+// const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app'; // Production backend
+const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
+
+// Global variables
 let authToken = localStorage.getItem('authToken');
+let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
 // Show appropriate view on page load
@@ -58,10 +61,66 @@ function showMessage(containerId, message, type) {
 
 function logout() {
   localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
   authToken = null;
+  refreshToken = null;
   currentUser = null;
   showLogin();
+}
+
+async function refreshAccessToken() {
+  if (!refreshToken) {
+    logout(); // No refresh token, force logout
+    return false;
+  }
+  
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      authToken = data.access_token;
+      localStorage.setItem('authToken', authToken);
+      return true;
+    } else {
+      // Refresh token expired or invalid
+      logout();
+      return false;
+    }
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    logout();
+    return false;
+  }
+}
+
+async function authenticatedFetch(url, options = {}) {
+  // Add authorization header
+  const headers = {
+    'Authorization': `Bearer ${authToken}`,
+    ...options.headers
+  };
+  
+  const response = await fetch(url, { ...options, headers });
+  
+  // If we get a 401, try to refresh the token
+  if (response.status === 401) {
+    console.log('Access token expired, attempting refresh...');
+    const refreshed = await refreshAccessToken();
+    
+    if (refreshed) {
+      // Retry the request with new token
+      headers['Authorization'] = `Bearer ${authToken}`;
+      return fetch(url, { ...options, headers });
+    }
+  }
+  
+  return response;
 }
 
 // Login form handler
@@ -80,9 +139,10 @@ $('#login-form').on('submit', async function(e) {
     const data = await response.json();
     
     if (response.ok) {
-      authToken = data.token;
+      authToken = data.access_token;
       currentUser = data.user;
       localStorage.setItem('authToken', authToken);
+      localStorage.setItem('refreshToken', data.refresh_token);
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
       showDashboard();
     } else {
@@ -116,9 +176,10 @@ $('#register-form').on('submit', async function(e) {
     const data = await response.json();
     
     if (response.ok) {
-      authToken = data.token;
+      authToken = data.access_token;
       currentUser = data.user;
       localStorage.setItem('authToken', authToken);
+      localStorage.setItem('refreshToken', data.refresh_token);
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
       showDashboard();
     } else {
@@ -152,11 +213,7 @@ async function fetchLinkToken(accessToken = null, mode = 'standard') {
     url += `&access_token=${encodeURIComponent(accessToken)}`;
   }
   
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${authToken}`
-    }
-  });
+  const response = await authenticatedFetch(url);
   
   if (!response.ok) {
     const error = await response.json();
@@ -168,11 +225,7 @@ async function fetchLinkToken(accessToken = null, mode = 'standard') {
 }
 
 async function getUserItems() {
-  const response = await fetch(`${BACKEND_URL}/api/items`, {
-    headers: {
-      'Authorization': `Bearer ${authToken}`
-    }
-  });
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/items`);
   
   if (!response.ok) {
     throw new Error('Failed to fetch items');
@@ -183,11 +236,10 @@ async function getUserItems() {
 }
 
 async function exchangePublicToken(public_token) {
-  const response = await fetch(`${BACKEND_URL}/api/set_access_token`, {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/set_access_token`, {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${authToken}`
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ public_token: public_token })
   });
