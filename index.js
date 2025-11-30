@@ -5,6 +5,10 @@ const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+let idleTimeout;
+
+// Idle timeout settings (30 minutes of inactivity)
+const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Show appropriate view on page load
 $(document).ready(function() {
@@ -49,6 +53,10 @@ function showDashboard() {
     $('#link-button').css('opacity', '1');
     $('#link-button').css('cursor', 'pointer');
   }
+  
+  // Setup security features for logged-in users
+  setupActivityListeners();
+  resetIdleTimeout();
 }
 
 function clearMessages() {
@@ -86,6 +94,7 @@ async function refreshAccessToken() {
       const data = await response.json();
       authToken = data.access_token;
       localStorage.setItem('authToken', authToken);
+      resetIdleTimeout(); // Reset idle timer after successful refresh
       return true;
     } else {
       // Refresh token expired or invalid
@@ -121,6 +130,31 @@ async function authenticatedFetch(url, options = {}) {
   }
   
   return response;
+}
+
+function resetIdleTimeout() {
+  // Clear existing timeout
+  if (idleTimeout) {
+    clearTimeout(idleTimeout);
+  }
+  
+  // Only set idle timeout if user is logged in
+  if (authToken && currentUser) {
+    idleTimeout = setTimeout(() => {
+      console.log('Idle timeout reached - logging out for security');
+      logout();
+      alert('You have been logged out due to inactivity for security reasons.');
+    }, IDLE_TIMEOUT);
+  }
+}
+
+function setupActivityListeners() {
+  // List of events that indicate user activity
+  const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+  
+  events.forEach(event => {
+    document.addEventListener(event, resetIdleTimeout, true);
+  });
 }
 
 // Login form handler
