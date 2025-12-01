@@ -1,5 +1,5 @@
-// const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app'; // Production backend
-const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
+const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app'; // Production backend
+// const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
 
 // Global variables
 let authToken = localStorage.getItem('authToken');
