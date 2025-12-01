@@ -5,13 +5,43 @@ let transactions = [];
 let synced = false;
 
 // Check authentication
-const token = localStorage.getItem('authToken');
+let token = localStorage.getItem('authToken');
+let refreshToken = localStorage.getItem('refreshToken');
+let idleTimeout;
 console.log('Token check:', token ? 'Token found' : 'No token found');
 
 if (!token) {
   console.log('No token, redirecting to index.html');
   alert('Please log in first');
   window.location.href = 'index.html';
+}
+
+async function refreshAccessToken() {
+  if (!refreshToken) {
+    return false;
+  }
+  
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      token = data.access_token;
+      localStorage.setItem('authToken', token);
+      resetIdleTimeout();
+      return true;
+    } else {
+      return false;
+    }
+  } catch (error) {
+    console.error('Token refresh failed:', error);
+    return false;
+  }
+  
 }
 
 async function authenticatedFetch(url, options = {}) {
@@ -23,8 +53,18 @@ async function authenticatedFetch(url, options = {}) {
   
   const response = await fetch(url, { ...options, headers });
   
-  // If we get a 401, redirect to login (transactions page doesn't handle refresh)
+  // If we get a 401, try to refresh the token
   if (response.status === 401) {
+    console.log('Access token expired, attempting refresh...');
+    const refreshed = await refreshAccessToken();
+    
+    if (refreshed) {
+      // Retry the request with new token
+      headers['Authorization'] = `Bearer ${token}`;
+      return fetch(url, { ...options, headers });
+    }
+    
+    // If refresh failed, redirect to login
     alert('Session expired. Please log in again.');
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
@@ -35,12 +75,53 @@ async function authenticatedFetch(url, options = {}) {
   return response;
 }
 
+
+function resetIdleTimeout() {
+  // Clear existing timeout
+  if (idleTimeout) {
+    clearTimeout(idleTimeout);
+  }
+  
+  // Only set idle timeout if user is logged in
+  if (token && currentUser) {
+    idleTimeout = setTimeout(() => {
+      console.log('Idle timeout reached - logging out for security');
+      logout();
+      alert('You have been logged out due to inactivity for security reasons.');
+    }, IDLE_TIMEOUT);
+  }
+}
+
+function setupActivityListeners() {
+  // List of events that indicate user activity
+  const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
+  
+  events.forEach(event => {
+    document.addEventListener(event, resetIdleTimeout, true);
+  });
+}
+
+// Idle timeout settings (30 minutes of inactivity)
+const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+
+function logout() {
+  localStorage.removeItem('authToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('currentUser');
+  token = null;
+  refreshToken = null;
+  currentUser = null;
+  window.location.href = 'index.html';
+}
+
 // Initialize
 $(document).ready(function() {
   console.log('Page loaded, initializing...');
   loadAccounts();
   setDefaultDates();
-  
+  resetIdleTimeout();
+  setupActivityListeners();
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
     renderTransactionTable();
