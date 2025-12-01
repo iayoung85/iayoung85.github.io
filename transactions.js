@@ -134,7 +134,7 @@ function setDefaultDates() {
   const start = new Date();
   let today = new Date();
   if (today.getDate() === 1) {
-    // If today is first of month, set start date to first of previous month
+    // If today is first of month, set start date to first of previous month instead of first of current month
     start.setMonth(start.getMonth() - 1);
   }
   else {
