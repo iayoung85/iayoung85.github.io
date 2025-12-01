@@ -26,6 +26,9 @@ async function authenticatedFetch(url, options = {}) {
   // If we get a 401, redirect to login (transactions page doesn't handle refresh)
   if (response.status === 401) {
     alert('Session expired. Please log in again.');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('currentUser');
     window.location.href = 'index.html';
   }
   
