@@ -8,6 +8,9 @@ let synced = false;
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let idleTimeout;
+// Idle timeout settings (30 minutes of inactivity)
+const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 console.log('Token check:', token ? 'Token found' : 'No token found');
 
 if (!token) {
@@ -101,9 +104,7 @@ function setupActivityListeners() {
   });
 }
 
-// Idle timeout settings (30 minutes of inactivity)
-const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
-let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+
 
 function logout() {
   localStorage.removeItem('authToken');
@@ -131,7 +132,14 @@ $(document).ready(function() {
 function setDefaultDates() {
   const end = new Date();
   const start = new Date();
-  start.setDate(1); // Default to first of the month
+  let today = new Date();
+  if (today.getDate() === 1) {
+    // If today is first of month, set start date to first of previous month
+    start.setMonth(start.getMonth() - 1);
+  }
+  else {
+    start.setDate(1); // Default to first of the month
+  }
   
   document.getElementById('start-date').value = start.toISOString().split('T')[0];
   document.getElementById('end-date').value = end.toISOString().split('T')[0];
