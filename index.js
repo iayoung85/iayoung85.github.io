@@ -292,10 +292,10 @@ $('#test-connection').on('click', async function() {
 });
 
 // Plaid integration functions
-async function fetchLinkToken(accessToken = null, mode = 'standard') {
+async function fetchLinkToken(itemId = null, mode = 'standard') {
   let url = `${BACKEND_URL}/api/create_link_token?mode=${mode}`;
-  if (accessToken) {
-    url += `&access_token=${encodeURIComponent(accessToken)}`;
+  if (itemId) {
+    url += `&item_id=${encodeURIComponent(itemId)}`;
   }
   
   const response = await authenticatedFetch(url);
@@ -349,7 +349,7 @@ $('#link-button').on('click', async function() {
     // Check for existing items
     const existingItems = await getUserItems();
     
-    let selectedAccessToken = null;
+    let selectedItemId = null;
     
     // If user has existing items, ask if they want to update or add new
     if (existingItems.length > 0) {
@@ -394,7 +394,7 @@ $('#link-button').on('click', async function() {
         
         if (choice) {
           const index = parseInt(choice) - 1;
-          selectedAccessToken = existingItems[index].access_token;
+          selectedItemId = existingItems[index].plaid_item_id;
         }
       }
     }
@@ -402,12 +402,12 @@ $('#link-button').on('click', async function() {
     const isInvestment = $('#investment-mode').is(':checked');
     const mode = isInvestment ? 'investment' : 'standard';
     
-    const linkToken = await fetchLinkToken(selectedAccessToken, mode);
+    const linkToken = await fetchLinkToken(selectedItemId, mode);
     const handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
         try {
-          if (selectedAccessToken) {
+          if (selectedItemId) {
             // Update mode - just show success, don't exchange token again
             showMessage('dashboard-message', '✓ Bank reconnected successfully!', 'success');
           } else {
@@ -486,14 +486,13 @@ $('#unlink-button').on('click', async function() {
     }
     
     const index = parseInt(choice) - 1;
-    const accessTokenToRemove = items[index].access_token;
     const itemIdToRemove = items[index].plaid_item_id;
     console.log('Removing item ID:', itemIdToRemove);
     // Call backend to remove item
     const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: itemIdToRemove, access_token: accessTokenToRemove })
+      body: JSON.stringify({ item_id: itemIdToRemove })
     });
     
     const data = await response.json();
