@@ -41,6 +41,9 @@ function showDashboard() {
   $('#user-name').text(`${currentUser.first_name || ''} ${currentUser.last_name || ''}`);
   clearMessages();
   
+  // Load connected banks
+  loadConnectedBanks();
+  
   // Check approval status
   if (currentUser.approved === false) {
     $('#approval-message').show();
@@ -63,6 +66,48 @@ function showDashboard() {
   // Setup security features for logged-in users
   setupActivityListeners();
   resetIdleTimeout();
+}
+
+async function loadConnectedBanks() {
+  try {
+    const items = await getUserItems();
+    const connectionsList = $('#connections-list');
+    
+    if (items.length === 0) {
+      connectionsList.html('<p style="color: #666; font-style: italic; margin-bottom: 8px">No connected banks yet. Click "Connect New Bank" to get started.</p>');
+      return;
+    }
+    
+    let html = '<ul style="list-style: none; padding: 0; margin: 0;">';
+    items.forEach(item => {
+      const instName = item.institution_name || 'Unknown Bank';
+      html += `
+        <li style="
+          margin-bottom: 8px; 
+          padding: 12px 16px; 
+          background: linear-gradient(135deg, #f0f4ff 0%, #e8f2ff 100%);
+          border: 1px solid #667eea20;
+          border-radius: 8px;
+          display: flex;
+          align-items: center;
+          font-weight: 500;
+          color: #333;
+          box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
+          transition: transform 0.2s, box-shadow 0.2s;
+        "
+        onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(102, 126, 234, 0.15)';"
+        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(102, 126, 234, 0.1)';">
+          <span style="font-size: 18px; margin-right: 12px;">🏦</span>
+          <span>${instName}</span>
+        </li>`;
+    });
+    html += '</ul>';
+    
+    connectionsList.html(html);
+  } catch (error) {
+    console.error('Error loading connected banks:', error);
+    $('#connections-list').html('<p style="color: #c33;">Error loading connected banks. Please try again.</p>');
+  }
 }
 
 function clearMessages() {
@@ -370,6 +415,8 @@ $('#link-button').on('click', async function() {
             await exchangePublicToken(public_token);
             showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
           }
+          // Refresh connected banks list
+          loadConnectedBanks();
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }
@@ -453,6 +500,8 @@ $('#unlink-button').on('click', async function() {
     
     if (response.ok) {
       showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
+      // Refresh connected banks list
+      loadConnectedBanks();
     } else {
       showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to disconnect bank'), 'error');
     }
