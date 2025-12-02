@@ -182,6 +182,14 @@ function selectAllAccounts() {
   renderTransactionTable();
 }
 
+function deselectAllAccounts() {
+  // Deselect all account checkboxes
+  document.querySelectorAll('.account-checkbox').forEach(checkbox => {
+    checkbox.checked = false;
+  });
+  renderTransactionTable();
+}
+
 async function loadAccounts() {
   try {
     console.log('=== loadAccounts() START ===');
