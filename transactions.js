@@ -174,7 +174,7 @@ async function refreshAccounts() {
   }
 }
 
-async function selectAllAccounts() {
+function selectAllAccounts() {
   // Select all account checkboxes
   document.querySelectorAll('.account-checkbox').forEach(checkbox => {
     checkbox.checked = true;
