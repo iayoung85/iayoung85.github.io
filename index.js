@@ -1,5 +1,5 @@
-const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app'; // Production backend
-// const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
+// const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app'; // Production backend
+const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
 
 // Global variables
 let authToken = localStorage.getItem('authToken');
@@ -47,11 +47,17 @@ function showDashboard() {
     $('#link-button').prop('disabled', true);
     $('#link-button').css('opacity', '0.5');
     $('#link-button').css('cursor', 'not-allowed');
+    $('#unlink-button').prop('disabled', true);
+    $('#unlink-button').css('opacity', '0.5');
+    $('#unlink-button').css('cursor', 'not-allowed');
   } else {
     $('#approval-message').hide();
     $('#link-button').prop('disabled', false);
     $('#link-button').css('opacity', '1');
     $('#link-button').css('cursor', 'pointer');
+    $('#unlink-button').prop('disabled', false);
+    $('#unlink-button').css('opacity', '1');
+    $('#unlink-button').css('cursor', 'pointer');
   }
   
   // Setup security features for logged-in users
@@ -382,6 +388,74 @@ $('#link-button').on('click', async function() {
       }
     });
     handler.open();
+  } catch (error) {
+    showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+  }
+});
+
+// Disconnect bank button
+$('#unlink-button').on('click', async function() {
+  if (!authToken) {
+    showMessage('dashboard-message', 'Please login first', 'error');
+    return;
+  }
+  
+  try {
+    const items = await getUserItems();
+    console.log('User items:', items);
+    console.log('plaid item id of first item:', items.length > 0 ? items[0].plaid_item_id : 'No items');
+    if (items.length === 0) {
+      showMessage('dashboard-message', 'No connected banks to disconnect', 'error');
+      return;
+    }
+    
+    let itemList = 'Select a bank to disconnect:\n\n';
+    items.forEach((item, idx) => {
+      const instName = item.institution_name || item.institution_id || 'Unknown Bank';
+      itemList += `${idx + 1}. ${instName}\n`;
+    });
+    
+    const validOptions = items.map((_, idx) => idx + 1).join(', ');
+    itemList += `\nEnter ${validOptions} to select a bank to disconnect.`;
+    
+    let choice = null;
+    let validInput = false;
+    
+    while (!validInput) {
+      const input = prompt(itemList);
+      
+      if (input === null) {
+        // User clicked Cancel
+        return;
+      }
+      
+      const num = parseInt(input);
+      if (!isNaN(num) && num >= 1 && num <= items.length) {
+        choice = input;
+        validInput = true;
+      } else {
+        alert(`Invalid input. Please enter a number between 1 and ${items.length}.`);
+      }
+    }
+    
+    const index = parseInt(choice) - 1;
+    const accessTokenToRemove = items[index].access_token;
+    const itemIdToRemove = items[index].plaid_item_id;
+    console.log('Removing item ID:', itemIdToRemove);
+    // Call backend to remove item
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemIdToRemove, access_token: accessTokenToRemove })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
+    } else {
+      showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to disconnect bank'), 'error');
+    }
   } catch (error) {
     showMessage('dashboard-message', 'Error: ' + error.message, 'error');
   }
