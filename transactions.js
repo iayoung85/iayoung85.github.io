@@ -174,6 +174,14 @@ async function refreshAccounts() {
   }
 }
 
+async function selectAllAccounts() {
+  // Select all account checkboxes
+  document.querySelectorAll('.account-checkbox').forEach(checkbox => {
+    checkbox.checked = true;
+  });
+  renderTransactionTable();
+}
+
 async function loadAccounts() {
   try {
     console.log('=== loadAccounts() START ===');
