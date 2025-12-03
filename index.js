@@ -103,29 +103,54 @@ async function loadConnectedBanks() {
             <span style="font-size: 18px; margin-right: 12px;">🏦</span>
             <span>${instName}</span>
           </div>
-          <button 
-            onclick="disconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}')"
-            style="
-              background: #dc3545;
-              color: white;
-              border: none;
-              border-radius: 50%;
-              width: 28px;
-              height: 28px;
-              font-size: 16px;
-              font-weight: bold;
-              cursor: pointer;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              transition: background 0.2s, transform 0.1s;
-              padding: 0;
-              line-height: 1;
-            "
-            onmouseover="this.style.background='#c82333'; this.style.transform='scale(1.1)';"
-            onmouseout="this.style.background='#dc3545'; this.style.transform='scale(1)';"
-            title="Disconnect ${instName}"
-          >✕</button>
+          <div style="display: flex; gap: 8px;">
+            <button 
+              onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}')"
+              style="
+                background: #28a745;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 28px;
+                height: 28px;
+                font-size: 20px;
+                font-weight: normal;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s, transform 0.1s;
+                padding: 0;
+                line-height: 1;
+              "
+              onmouseover="this.style.background='#218838'; this.style.transform='scale(1.1)';"
+              onmouseout="this.style.background='#28a745'; this.style.transform='scale(1)';"
+              title="Reconnect/Update ${instName}"
+            >↻</button>
+            <button 
+              onclick="disconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}')"
+              style="
+                background: #dc3545;
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 28px;
+                height: 28px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s, transform 0.1s;
+                padding: 0;
+                line-height: 1;
+              "
+              onmouseover="this.style.background='#c82333'; this.style.transform='scale(1.1)';"
+              onmouseout="this.style.background='#dc3545'; this.style.transform='scale(1)';"
+              title="Disconnect ${instName}"
+            >✕</button>
+          </div>
         </li>`;
     });
     html += '</ul>';
@@ -373,75 +398,18 @@ $('#link-button').on('click', async function() {
   }
   
   try {
-    // Check for existing items
-    const existingItems = await getUserItems();
-    
-    let selectedItemId = null;
-    
-    // If user has existing items, ask if they want to update or add new
-    if (existingItems.length > 0) {
-      const action = confirm(
-        `You have ${existingItems.length} bank(s) connected.\n\n` +
-        `Click OK to RECONNECT/UPDATE an existing bank.\n` +
-        `Click Cancel to ADD A NEW bank.`
-      );
-      
-      if (action) {
-        // Show list of existing items to update
-        let itemList = 'Which bank do you want to reconnect?\n\n';
-        existingItems.forEach((item, idx) => {
-          const instName = item.institution_name || item.institution_id || 'Unknown Bank';
-          const status = item.status || 'unknown';
-          itemList += `${idx + 1}. ${instName} (${status})\n`;
-        });
-        
-        // Build valid options text
-        const validOptions = existingItems.map((_, idx) => idx + 1).join(', ');
-        itemList += `\nEnter ${validOptions} to select a bank, or click Cancel to add a new bank instead.`;
-        
-        let choice = null;
-        let validInput = false;
-        
-        while (!validInput) {
-          const input = prompt(itemList);
-          
-          if (input === null) {
-            // User clicked Cancel
-            break;
-          }
-          
-          const num = parseInt(input);
-          if (!isNaN(num) && num >= 1 && num <= existingItems.length) {
-            choice = input;
-            validInput = true;
-          } else {
-            alert(`Invalid input. Please enter a number between 1 and ${existingItems.length}.`);
-          }
-        }
-        
-        if (choice) {
-          const index = parseInt(choice) - 1;
-          selectedItemId = existingItems[index].plaid_item_id;
-        }
-      }
-    }
-    
+    // Always add new bank - use the green refresh button to update existing banks
     const isInvestment = $('#investment-mode').is(':checked');
     const mode = isInvestment ? 'investment' : 'standard';
     
-    const linkToken = await fetchLinkToken(selectedItemId, mode);
+    const linkToken = await fetchLinkToken(null, mode);
     const handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
         try {
-          if (selectedItemId) {
-            // Update mode - just show success, don't exchange token again
-            showMessage('dashboard-message', '✓ Bank reconnected successfully!', 'success');
-          } else {
-            // New connection - exchange token
-            await exchangePublicToken(public_token);
-            showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
-          }
+          // New connection - exchange token
+          await exchangePublicToken(public_token);
+          showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
           // Refresh connected banks list
           loadConnectedBanks();
         } catch (error) {
@@ -466,6 +434,47 @@ $('#link-button').on('click', async function() {
     showMessage('dashboard-message', 'Error: ' + error.message, 'error');
   }
 });
+
+// Reconnect/update bank function
+async function reconnectBank(itemId, bankName) {
+  if (!authToken) {
+    showMessage('dashboard-message', 'Please login first', 'error');
+    return;
+  }
+  
+  try {
+    // For reconnection, we always use standard mode (user can use "Connect New Bank" for investment accounts)
+    const linkToken = await fetchLinkToken(itemId, 'standard');
+    const handler = Plaid.create({
+      token: linkToken,
+      onSuccess: async (public_token, metadata) => {
+        try {
+          // Update mode - just show success, don't exchange token again
+          showMessage('dashboard-message', `✓ ${bankName} reconnected successfully!`, 'success');
+          // Refresh connected banks list
+          loadConnectedBanks();
+        } catch (error) {
+          showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+        }
+      },
+      onLoad: () => {
+        // Link is ready
+      },
+      onExit: (err, metadata) => {
+        if (err != null) {
+          console.error('Plaid Link Error:', err);
+          showMessage('dashboard-message', 'Reconnection cancelled or failed', 'error');
+        }
+      },
+      onEvent: (eventName, metadata) => {
+        console.log('Plaid Event:', eventName);
+      }
+    });
+    handler.open();
+  } catch (error) {
+    showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+  }
+}
 
 // Disconnect individual bank function
 async function disconnectBank(itemId, bankName) {
