@@ -81,6 +81,7 @@ async function loadConnectedBanks() {
     let html = '<ul style="list-style: none; padding: 0; margin: 0;">';
     items.forEach(item => {
       const instName = item.institution_name || 'Unknown Bank';
+      const itemId = item.plaid_item_id;
       html += `
         <li style="
           margin-bottom: 8px; 
@@ -90,6 +91,7 @@ async function loadConnectedBanks() {
           border-radius: 8px;
           display: flex;
           align-items: center;
+          justify-content: space-between;
           font-weight: 500;
           color: #333;
           box-shadow: 0 2px 4px rgba(102, 126, 234, 0.1);
@@ -97,8 +99,33 @@ async function loadConnectedBanks() {
         "
         onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(102, 126, 234, 0.15)';"
         onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(102, 126, 234, 0.1)';">
-          <span style="font-size: 18px; margin-right: 12px;">🏦</span>
-          <span>${instName}</span>
+          <div style="display: flex; align-items: center;">
+            <span style="font-size: 18px; margin-right: 12px;">🏦</span>
+            <span>${instName}</span>
+          </div>
+          <button 
+            onclick="disconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}')"
+            style="
+              background: #dc3545;
+              color: white;
+              border: none;
+              border-radius: 50%;
+              width: 28px;
+              height: 28px;
+              font-size: 16px;
+              font-weight: bold;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              transition: background 0.2s, transform 0.1s;
+              padding: 0;
+              line-height: 1;
+            "
+            onmouseover="this.style.background='#c82333'; this.style.transform='scale(1.1)';"
+            onmouseout="this.style.background='#dc3545'; this.style.transform='scale(1)';"
+            title="Disconnect ${instName}"
+          >✕</button>
         </li>`;
     });
     html += '</ul>';
@@ -440,59 +467,23 @@ $('#link-button').on('click', async function() {
   }
 });
 
-// Disconnect bank button
-$('#unlink-button').on('click', async function() {
+// Disconnect individual bank function
+async function disconnectBank(itemId, bankName) {
   if (!authToken) {
     showMessage('dashboard-message', 'Please login first', 'error');
     return;
   }
   
+  // Confirm before disconnecting
+  if (!confirm(`⚠️ WARNING: Disconnect ${bankName}?\n\nIf you're having connection issues or need to update your credentials, use "Connect New Bank" instead and select this bank to reconnect.\n\nDisconnecting and then reconnecting as a NEW bank will incur additional Plaid fees.\n\nAre you sure you want to permanently disconnect ${bankName}?`)) {
+    return;
+  }
+  
   try {
-    const items = await getUserItems();
-    console.log('User items:', items);
-    console.log('plaid item id of first item:', items.length > 0 ? items[0].plaid_item_id : 'No items');
-    if (items.length === 0) {
-      showMessage('dashboard-message', 'No connected banks to disconnect', 'error');
-      return;
-    }
-    
-    let itemList = 'Select a bank to disconnect:\n\n';
-    items.forEach((item, idx) => {
-      const instName = item.institution_name || item.institution_id || 'Unknown Bank';
-      itemList += `${idx + 1}. ${instName}\n`;
-    });
-    
-    const validOptions = items.map((_, idx) => idx + 1).join(', ');
-    itemList += `\nEnter ${validOptions} to select a bank to disconnect.`;
-    
-    let choice = null;
-    let validInput = false;
-    
-    while (!validInput) {
-      const input = prompt(itemList);
-      
-      if (input === null) {
-        // User clicked Cancel
-        return;
-      }
-      
-      const num = parseInt(input);
-      if (!isNaN(num) && num >= 1 && num <= items.length) {
-        choice = input;
-        validInput = true;
-      } else {
-        alert(`Invalid input. Please enter a number between 1 and ${items.length}.`);
-      }
-    }
-    
-    const index = parseInt(choice) - 1;
-    const itemIdToRemove = items[index].plaid_item_id;
-    console.log('Removing item ID:', itemIdToRemove);
-    // Call backend to remove item
     const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: itemIdToRemove })
+      body: JSON.stringify({ item_id: itemId })
     });
     
     const data = await response.json();
@@ -507,7 +498,7 @@ $('#unlink-button').on('click', async function() {
   } catch (error) {
     showMessage('dashboard-message', 'Error: ' + error.message, 'error');
   }
-});
+}
 
 // Handle OAuth redirect
 (async function handleOauthReturn() {
