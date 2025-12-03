@@ -448,9 +448,33 @@ async function reconnectBank(itemId, bankName) {
     const handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
+        console.log('Update mode metadata:', metadata);  // ADD THIS
+        console.log('Accounts in metadata:', metadata.accounts);  // AND THIS
+  
         try {
-          // Update mode - just show success, don't exchange token again
-          showMessage('dashboard-message', `✓ ${bankName} reconnected successfully!`, 'success');
+          // Update mode - refresh accounts from Plaid (user may have changed account selection)
+          const response = await authenticatedFetch(`${BACKEND_URL}/api/refresh_item_accounts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: itemId })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            let message = `✓ ${bankName} reconnected successfully!`;
+            
+            if (data.accounts_added > 0 || data.accounts_removed > 0) {
+              const changes = [];
+              if (data.accounts_added > 0) changes.push(`${data.accounts_added} account(s) added`);
+              if (data.accounts_removed > 0) changes.push(`${data.accounts_removed} account(s) removed`);
+              message += ` (${changes.join(', ')})`;
+            }
+            
+            showMessage('dashboard-message', message, 'success');
+          } else {
+            showMessage('dashboard-message', `✓ ${bankName} reconnected, but failed to refresh accounts`, 'success');
+          }
+          
           // Refresh connected banks list
           loadConnectedBanks();
         } catch (error) {
