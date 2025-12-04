@@ -69,15 +69,23 @@ function showDashboard() {
 }
 
 async function loadConnectedBanks() {
+  console.log('loadConnectedBanks() called');
+  console.log('authToken:', authToken ? 'present' : 'missing');
+  
   try {
+    console.log('Fetching items from backend...');
     const items = await getUserItems();
+    console.log('Items received:', items);
+    
     const connectionsList = $('#connections-list');
     
     if (items.length === 0) {
+      console.log('No items found');
       connectionsList.html('<p style="color: #666; font-style: italic; margin-bottom: 8px">No connected banks yet. Click "Connect New Bank" to get started.</p>');
       return;
     }
     
+    console.log('Rendering', items.length, 'items');
     let html = '<ul style="list-style: none; padding: 0; margin: 0;">';
     items.forEach(item => {
       const instName = item.institution_name || 'Unknown Bank';
@@ -155,10 +163,14 @@ async function loadConnectedBanks() {
     });
     html += '</ul>';
     
+    console.log('Setting HTML');
     connectionsList.html(html);
+    console.log('Banks loaded successfully');
   } catch (error) {
     console.error('Error loading connected banks:', error);
-    $('#connections-list').html('<p style="color: #c33;">Error loading connected banks. Please try again.</p>');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    $('#connections-list').html(`<p style="color: #c33;">Error loading connected banks: ${error.message}</p>`);
   }
 }
 
@@ -266,26 +278,35 @@ $('#login-form').on('submit', async function(e) {
   const email = $('#login-email').val();
   const password = $('#login-password').val();
   
+  console.log('Login form submitted for:', email);
+  
   try {
+    console.log('Making login request to:', `${BACKEND_URL}/api/login`);
     const response = await fetch(`${BACKEND_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
     });
     
+    console.log('Login response status:', response.status);
     const data = await response.json();
+    console.log('Login response data:', data);
     
     if (response.ok) {
+      console.log('Login successful, setting tokens and user data');
       authToken = data.access_token;
       currentUser = data.user;
       localStorage.setItem('authToken', authToken);
       localStorage.setItem('refreshToken', data.refresh_token);
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      console.log('Calling showDashboard()');
       showDashboard();
     } else {
+      console.log('Login failed:', data.error);
       showMessage('login-message', data.error || 'Login failed', 'error');
     }
   } catch (error) {
+    console.error('Login error:', error);
     showMessage('login-message', 'Connection error: ' + error.message, 'error');
   }
 });
@@ -362,13 +383,23 @@ async function fetchLinkToken(itemId = null, mode = 'standard') {
 }
 
 async function getUserItems() {
+  console.log('getUserItems() called');
+  console.log('Making request to:', `${BACKEND_URL}/api/items`);
+  console.log('Authorization header:', authToken ? `Bearer ${authToken.substring(0, 20)}...` : 'MISSING');
+  
   const response = await authenticatedFetch(`${BACKEND_URL}/api/items`);
   
+  console.log('getUserItems() response status:', response.status);
+  console.log('getUserItems() response headers:', response.headers);
+  
   if (!response.ok) {
-    throw new Error('Failed to fetch items');
+    const errorText = await response.text();
+    console.error('getUserItems() error response:', errorText);
+    throw new Error(`Failed to fetch items: ${response.status} ${response.statusText}`);
   }
   
   const data = await response.json();
+  console.log('getUserItems() data:', data);
   return data.items || [];
 }
 
