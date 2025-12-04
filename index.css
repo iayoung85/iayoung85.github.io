@@ -6,7 +6,7 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #182742 0%, #3D1A2E 100%);
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -82,12 +82,12 @@ input:focus {
 }
 
 .btn-primary {
-  background: #667eea;
+  background: #182742;
   color: white;
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #5568d3;
+  background: #3D1A2E;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
 }
@@ -109,7 +109,7 @@ input:focus {
 .btn-link {
   background: none;
   border: none;
-  color: #667eea;
+  color: #182742;
   cursor: pointer;
   text-decoration: underline;
   font-size: 14px;

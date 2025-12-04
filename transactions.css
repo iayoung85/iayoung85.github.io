@@ -73,7 +73,7 @@ input[type="date"], select {
 }
 button {
   padding: 10px 20px;
-  background: #0070f3;
+  background: #182742;
   color: white;
   border: none;
   border-radius: 4px;
@@ -81,7 +81,7 @@ button {
   font-size: 14px;
 }
 button:hover {
-  background: #0051cc;
+  background: #3D1A2E;
 }
 button:disabled {
   background: #ccc;
