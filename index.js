@@ -343,10 +343,11 @@ $('#test-connection').on('click', async function() {
 });
 
 // Plaid integration functions
-async function fetchLinkToken(itemId = null, mode = 'standard') {
-  let url = `${BACKEND_URL}/api/create_link_token?mode=${mode}`;
+async function fetchLinkToken(itemId = null) {
+  let url = `${BACKEND_URL}/api/create_link_token`;
+  // Add query parameter if itemId is provided
   if (itemId) {
-    url += `&item_id=${encodeURIComponent(itemId)}`;
+    url += `?item_id=${encodeURIComponent(itemId)}`;
   }
   
   const response = await authenticatedFetch(url);
@@ -400,10 +401,7 @@ $('#link-button').on('click', async function() {
   
   try {
     // Always add new bank - use the green refresh button to update existing banks
-    const isInvestment = $('#investment-mode').is(':checked');
-    const mode = isInvestment ? 'investment' : 'standard';
-    
-    const linkToken = await fetchLinkToken(null, mode);
+    const linkToken = await fetchLinkToken(null);
     const handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
@@ -445,7 +443,7 @@ async function reconnectBank(itemId, bankName) {
   
   try {
     // For reconnection, we always use standard mode (user can use "Connect New Bank" for investment accounts)
-    const linkToken = await fetchLinkToken(itemId, 'standard');
+    const linkToken = await fetchLinkToken(itemId);
     const handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
