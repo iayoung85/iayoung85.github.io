@@ -1,5 +1,5 @@
-// const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
-const BACKEND_URL = 'http://localhost:3000';
+const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
+// const BACKEND_URL = 'http://localhost:3000';
 let accounts = [];
 let transactions = [];
 let synced = false;
