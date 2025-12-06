@@ -280,6 +280,8 @@ async function loadAccounts() {
     }
     
     accounts = data.accounts || [];
+    // Filter out investment accounts as they are not supported
+    accounts = accounts.filter(acc => acc.account_type !== 'investment');
     console.log('Accounts loaded:', accounts.length);
     console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type}) ${a.is_disconnected ? '[DISCONNECTED]' : ''}`));
     renderAccountSelector();
@@ -334,26 +336,18 @@ function renderAccountSelector() {
       const accountClass = acc.is_disconnected ? 'disconnected-account' : '';
       let warningText = acc.is_disconnected ? ' ⚠️ No new transactions will sync' : '';
       
-      // Disable investment accounts
-      const isInvestment = acc.account_type === 'investment';
-      const disabledAttr = isInvestment ? 'disabled' : '';
-      if (isInvestment) {
-        warningText = ' ⚠️ Investment transactions not supported';
-      }
-      
       html += `
-        <div class="account-item ${accountClass}" ${isInvestment ? 'style="opacity: 0.6;"' : ''}>
+        <div class="account-item ${accountClass}">
           <div style="display: flex; align-items: center;">
             <button class="secondary" style="padding: 2px 6px; font-size: 10px; margin-right: 8px;" 
                     onclick="promptRename('${acc.plaid_account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
               Rename
             </button>
-            <label style="flex-grow: 1; ${isInvestment ? 'cursor: not-allowed;' : ''}" title="${isInvestment ? 'Investment transactions are not currently supported' : ''}">
+            <label style="flex-grow: 1;">
               <input type="checkbox" class="account-checkbox" 
                      data-bank="${key}"
                      data-account-id="${acc.plaid_account_id}"
-                     data-disconnected="${acc.is_disconnected}"
-                     ${disabledAttr}>
+                     data-disconnected="${acc.is_disconnected}">
               ${displayName}${warningText}
             </label>
           </div>
