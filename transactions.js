@@ -463,9 +463,6 @@ async function loadTransactions() {
     showStatus(`Loaded ${transactions.length} transactions`, 'success');
     setTimeout(() => clearStatus(), 2000);
     
-    // Save settings after successful load
-    saveSettings();
-    
   } catch (error) {
     showStatus(`Load failed: ${error.message}`, 'error');
   }
@@ -735,6 +732,8 @@ async function promptRename(accountId, currentCustomName) {
 
 async function saveSettings() {
   try {
+    showStatus('Saving settings...', 'info');
+    
     const selectedAccounts = getSelectedAccounts();
     const optionalFields = [];
     $('.field-checkbox:checked').each(function() {
@@ -762,11 +761,16 @@ async function saveSettings() {
     });
     
     if (!response.ok) {
-      console.warn('Failed to save settings');
+      const data = await response.json();
+      throw new Error(data.error || 'Failed to save settings');
     }
+    
+    showStatus('Settings saved successfully', 'success');
+    setTimeout(() => clearStatus(), 2000);
     
   } catch (error) {
     console.error('Error saving settings:', error);
+    showStatus(`Failed to save settings: ${error.message}`, 'error');
   }
 }
 
