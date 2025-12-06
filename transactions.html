@@ -69,8 +69,17 @@
         
         <!-- Action Buttons -->
         <div class="config-section">
-          <button onclick="syncTransactions()">Sync Transactions</button>
-          <button onclick="loadTransactions()" id="load-btn" disabled>Load Data</button>
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button onclick="syncTransactions()">Sync Transactions</button>
+            <button onclick="loadTransactions()" id="load-btn" disabled>Load Data</button>
+            
+            <!-- Export Buttons (initially hidden until data loaded) -->
+            <div id="export-buttons" class="hidden" style="display: flex; gap: 10px;">
+              <button onclick="exportJSON()" class="secondary">Export JSON</button>
+              <button onclick="copyCSV()" class="secondary">Copy CSV</button>
+              <button onclick="downloadCSV()" class="secondary">Download CSV</button>
+            </div>
+          </div>
           <div id="status-message"></div>
         </div>
         
@@ -82,13 +91,6 @@
       <div class="empty-state">
         Configure your settings above and click "Sync Transactions" to get started.
       </div>
-    </div>
-    
-    <!-- Export Buttons -->
-    <div class="export-buttons hidden" id="export-buttons">
-      <button onclick="exportJSON()">Export JSON</button>
-      <button onclick="copyCSV()">Copy CSV to Clipboard</button>
-      <button onclick="downloadCSV()">Download CSV</button>
     </div>
     
   </div>
