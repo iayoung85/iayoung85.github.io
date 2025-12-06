@@ -6,6 +6,7 @@ let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 let idleTimeout;
+let tempToken = null; // For 2FA login flow
 
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -23,6 +24,8 @@ function showLogin() {
   $('#login-view').removeClass('hidden');
   $('#register-view').addClass('hidden');
   $('#dashboard-view').addClass('hidden');
+  $('#forgot-password-view').addClass('hidden');
+  $('#two-factor-view').addClass('hidden');
   clearMessages();
 }
 
@@ -30,6 +33,8 @@ function showRegister() {
   $('#login-view').addClass('hidden');
   $('#register-view').removeClass('hidden');
   $('#dashboard-view').addClass('hidden');
+  $('#forgot-password-view').addClass('hidden');
+  $('#two-factor-view').addClass('hidden');
   clearMessages();
 }
 
@@ -37,12 +42,17 @@ function showDashboard() {
   $('#login-view').addClass('hidden');
   $('#register-view').addClass('hidden');
   $('#dashboard-view').removeClass('hidden');
+  $('#forgot-password-view').addClass('hidden');
+  $('#two-factor-view').addClass('hidden');
   $('#user-email').text(currentUser.email);
   $('#user-name').text(`${currentUser.first_name || ''} ${currentUser.last_name || ''}`);
   clearMessages();
   
   // Load connected banks
   loadConnectedBanks();
+  
+  // Update 2FA UI
+  update2FAUI();
   
   // Check approval status
   if (currentUser.approved === false) {
@@ -66,6 +76,25 @@ function showDashboard() {
   // Setup security features for logged-in users
   setupActivityListeners();
   resetIdleTimeout();
+}
+
+function showForgotPassword() {
+  $('#login-view').addClass('hidden');
+  $('#register-view').addClass('hidden');
+  $('#dashboard-view').addClass('hidden');
+  $('#forgot-password-view').removeClass('hidden');
+  $('#two-factor-view').addClass('hidden');
+  clearMessages();
+}
+
+function showTwoFactorLogin() {
+  $('#login-view').addClass('hidden');
+  $('#register-view').addClass('hidden');
+  $('#dashboard-view').addClass('hidden');
+  $('#forgot-password-view').addClass('hidden');
+  $('#two-factor-view').removeClass('hidden');
+  clearMessages();
+  $('#two-factor-code').focus();
 }
 
 async function loadConnectedBanks() {
@@ -274,18 +303,94 @@ $('#login-form').on('submit', async function(e) {
     const data = await response.json();
     
     if (response.ok) {
-      authToken = data.access_token;
-      currentUser = data.user;
-      localStorage.setItem('authToken', authToken);
-      localStorage.setItem('refreshToken', data.refresh_token);
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      showDashboard();
+      if (data.require_2fa) {
+        // 2FA required
+        tempToken = data.temp_token;
+        showTwoFactorLogin();
+      } else {
+        // Normal login success
+        authToken = data.access_token;
+        currentUser = data.user;
+        localStorage.setItem('authToken', authToken);
+        localStorage.setItem('refreshToken', data.refresh_token);
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        showDashboard();
+      }
     } else {
       showMessage('login-message', data.error || 'Login failed', 'error');
     }
   } catch (error) {
     console.error('Login error:', error);
     showMessage('login-message', 'Connection error: ' + error.message, 'error');
+  }
+});
+
+// 2FA Login form handler
+$('#two-factor-form').on('submit', async function(e) {
+  e.preventDefault();
+  const code = $('#two-factor-code').val();
+  
+  if (!tempToken) {
+    showLogin();
+    return;
+  }
+  
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/verify_2fa_login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ temp_token: tempToken, code })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      authToken = data.access_token;
+      currentUser = data.user;
+      localStorage.setItem('authToken', authToken);
+      localStorage.setItem('refreshToken', data.refresh_token);
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      tempToken = null; // Clear temp token
+      showDashboard();
+    } else {
+      showMessage('two-factor-message', data.error || 'Verification failed', 'error');
+    }
+  } catch (error) {
+    showMessage('two-factor-message', 'Connection error: ' + error.message, 'error');
+  }
+});
+
+// Forgot Password form handler
+$('#forgot-form').on('submit', async function(e) {
+  e.preventDefault();
+  const email = $('#forgot-email').val();
+  const btn = $(this).find('button[type="submit"]');
+  
+  btn.prop('disabled', true).text('Sending...');
+  
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/forgot_password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      $('#forgot-password-view').html(`
+        <h1>Check Your Email</h1>
+        <p class="subtitle">We've sent a password reset link to ${email}</p>
+        <div class="message success">Please check your inbox and spam folder.</div>
+        <button class="btn btn-primary" onclick="showLogin()">Back to Login</button>
+      `);
+    } else {
+      showMessage('forgot-message', data.error || 'Request failed', 'error');
+      btn.prop('disabled', false).text('Send Reset Link');
+    }
+  } catch (error) {
+    showMessage('forgot-message', 'Connection error: ' + error.message, 'error');
+    btn.prop('disabled', false).text('Send Reset Link');
   }
 });
 
@@ -560,3 +665,94 @@ async function disconnectBank(itemId, bankName) {
     console.error('Error handling OAuth redirect:', err);
   }
 })();
+
+// 2FA Setup Functions
+function update2FAUI() {
+  if (currentUser && currentUser.is_2fa_enabled) {
+    $('#2fa-status-text').text('Enabled').css('color', '#28a745');
+    $('#enable-2fa-btn').addClass('hidden');
+    $('#disable-2fa-btn').removeClass('hidden');
+  } else {
+    $('#2fa-status-text').text('Disabled').css('color', '#666');
+    $('#enable-2fa-btn').removeClass('hidden');
+    $('#disable-2fa-btn').addClass('hidden');
+  }
+  $('#2fa-setup-area').addClass('hidden');
+}
+
+async function start2FASetup() {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/setup_2fa`, {
+      method: 'POST'
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      $('#2fa-setup-area').removeClass('hidden');
+      $('#qr-code-container').html(`<img src="data:image/png;base64,${data.qr_code}" alt="2FA QR Code" style="max-width: 200px; border: 1px solid #ddd; padding: 10px;">`);
+      $('#secret-key-display').text(data.secret);
+      $('#setup-2fa-message').html('');
+      $('#setup-2fa-code').val('').focus();
+    } else {
+      alert('Failed to start 2FA setup: ' + (data.error || 'Unknown error'));
+    }
+  } catch (error) {
+    alert('Connection error: ' + error.message);
+  }
+}
+
+function cancel2FASetup() {
+  $('#2fa-setup-area').addClass('hidden');
+  $('#setup-2fa-message').html('');
+}
+
+$('#verify-2fa-setup-form').on('submit', async function(e) {
+  e.preventDefault();
+  const code = $('#setup-2fa-code').val();
+  
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/verify_2fa_setup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      currentUser.is_2fa_enabled = true;
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      update2FAUI();
+      alert('Two-Factor Authentication has been enabled successfully!');
+    } else {
+      $('#setup-2fa-message').html(`<div class="message error">${data.error || 'Verification failed'}</div>`);
+    }
+  } catch (error) {
+    $('#setup-2fa-message').html(`<div class="message error">Connection error: ${error.message}</div>`);
+  }
+});
+
+async function disable2FA() {
+  if (!confirm('Are you sure you want to disable Two-Factor Authentication? This will make your account less secure.')) {
+    return;
+  }
+  
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/disable_2fa`, {
+      method: 'POST'
+    });
+    
+    if (response.ok) {
+      currentUser.is_2fa_enabled = false;
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      update2FAUI();
+      alert('Two-Factor Authentication has been disabled.');
+    } else {
+      const data = await response.json();
+      alert('Failed to disable 2FA: ' + (data.error || 'Unknown error'));
+    }
+  } catch (error) {
+    alert('Connection error: ' + error.message);
+  }
+}
