@@ -147,12 +147,11 @@ tr:hover {
   background: #f0f0f0;
 }
 .export-buttons {
-  margin-top: 20px;
   display: flex;
   gap: 10px;
 }
 .hidden {
-  display: none;
+  display: none !important;
 }
 .loading {
   text-align: center;

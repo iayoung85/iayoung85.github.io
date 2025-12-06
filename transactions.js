@@ -195,6 +195,42 @@ function setDefaultDates() {
   document.getElementById('end-date').value = formatDate(end);
 }
 
+function setMonthToDate() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(1); // First of the current month
+  
+  // Helper to format date as YYYY-MM-DD in local time
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  document.getElementById('start-date').value = formatDate(start);
+  document.getElementById('end-date').value = formatDate(end);
+}
+
+function setLastMonth() {
+  const now = new Date();
+  // Get first day of previous month
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  // Get last day of previous month (day 0 of current month)
+  const end = new Date(now.getFullYear(), now.getMonth(), 0);
+  
+  // Helper to format date as YYYY-MM-DD in local time
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  document.getElementById('start-date').value = formatDate(start);
+  document.getElementById('end-date').value = formatDate(end);
+}
+
 function toggleConfig() {
   const content = document.getElementById('config-content');
   const icon = document.getElementById('toggle-icon');

@@ -36,8 +36,12 @@
         <!-- Date Range -->
         <div class="config-section">
           <h3>Date Range (up to 90 days of transaction data is available)</h3>
-          <input type="date" id="start-date">
-          <input type="date" id="end-date">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="date" id="start-date">
+            <input type="date" id="end-date">
+            <button onclick="setMonthToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Month to Date</button>
+            <button onclick="setLastMonth()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Last Month</button>
+          </div>
         </div>
         
         <!-- Timezone -->
@@ -75,7 +79,7 @@
             <button onclick="saveSettings()" class="secondary">Save Settings</button>
             
             <!-- Export Buttons (initially hidden until data loaded) -->
-            <div id="export-buttons" class="hidden" style="display: flex; gap: 10px;">
+            <div id="export-buttons" class="export-buttons hidden">
               <button onclick="exportJSON()" class="secondary">Export JSON</button>
               <button onclick="copyCSV()" class="secondary">Copy CSV</button>
               <button onclick="downloadCSV()" class="secondary">Download CSV</button>
