@@ -6,7 +6,7 @@ let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 let idleTimeout;
-let tempToken = null; // For 2FA login flow
+let tempLoginCreds = null; // For 2FA login flow
 
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -304,8 +304,8 @@ $('#login-form').on('submit', async function(e) {
     
     if (response.ok) {
       if (data.require_2fa) {
-        // 2FA required
-        tempToken = data.temp_token;
+        // 2FA required - store credentials temporarily
+        tempLoginCreds = { email, password };
         showTwoFactorLogin();
       } else {
         // Normal login success
@@ -330,16 +330,21 @@ $('#two-factor-form').on('submit', async function(e) {
   e.preventDefault();
   const code = $('#two-factor-code').val();
   
-  if (!tempToken) {
+  if (!tempLoginCreds) {
     showLogin();
     return;
   }
   
   try {
-    const response = await fetch(`${BACKEND_URL}/api/verify_2fa_login`, {
+    // Call login endpoint again with credentials AND 2FA code
+    const response = await fetch(`${BACKEND_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ temp_token: tempToken, code })
+      body: JSON.stringify({ 
+        email: tempLoginCreds.email, 
+        password: tempLoginCreds.password,
+        totp_code: code 
+      })
     });
     
     const data = await response.json();
@@ -350,7 +355,7 @@ $('#two-factor-form').on('submit', async function(e) {
       localStorage.setItem('authToken', authToken);
       localStorage.setItem('refreshToken', data.refresh_token);
       localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      tempToken = null; // Clear temp token
+      tempLoginCreds = null; // Clear temp credentials
       showDashboard();
     } else {
       showMessage('two-factor-message', data.error || 'Verification failed', 'error');
