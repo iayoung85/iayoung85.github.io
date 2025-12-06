@@ -283,7 +283,7 @@ async function loadAccounts() {
     // Filter out investment accounts as they are not supported
     accounts = accounts.filter(acc => acc.account_type !== 'investment');
     console.log('Accounts loaded:', accounts.length);
-    console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type}) ${a.is_disconnected ? '[DISCONNECTED]' : ''}`));
+    console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type})`));
     renderAccountSelector();
     showStatus('Accounts loaded successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -305,11 +305,10 @@ function renderAccountSelector() {
   // Group by institution
   const grouped = {};
   accounts.forEach(acc => {
-    const institutionKey = acc.institution_name + (acc.is_disconnected ? '_disconnected' : '_active');
+    const institutionKey = acc.institution_name;
     if (!grouped[institutionKey]) {
       grouped[institutionKey] = {
         name: acc.institution_name,
-        isDisconnected: acc.is_disconnected,
         accounts: []
       };
     }
@@ -319,25 +318,21 @@ function renderAccountSelector() {
   let html = '';
   Object.keys(grouped).forEach(key => {
     const group = grouped[key];
-    const disconnectedClass = group.isDisconnected ? 'disconnected-group' : '';
-    const disconnectedBadge = group.isDisconnected ? '<span class="disconnected-badge">DISCONNECTED</span>' : '';
     
     html += `
-      <div class="account-group ${disconnectedClass}">
+      <div class="account-group">
         <label>
           <input type="checkbox" class="bank-checkbox" data-bank="${key}" 
                  onchange="toggleBank('${key}')">
-          <strong>${group.name}</strong>${disconnectedBadge}
+          <strong>${group.name}</strong>
         </label>
     `;
     
     group.accounts.forEach(acc => {
       const displayName = acc.custom_name || `${acc.account_name} (${acc.account_subtype || acc.account_type})${acc.mask ? ' ...' + acc.mask : ''}`;
-      const accountClass = acc.is_disconnected ? 'disconnected-account' : '';
-      let warningText = acc.is_disconnected ? ' ⚠️ No new transactions will sync' : '';
       
       html += `
-        <div class="account-item ${accountClass}">
+        <div class="account-item">
           <div style="display: flex; align-items: center;">
             <button class="secondary" style="padding: 2px 6px; font-size: 10px; margin-right: 8px;" 
                     onclick="promptRename('${acc.plaid_account_id}', '${(acc.custom_name || '').replace(/'/g, "\\'")}')">
@@ -346,9 +341,8 @@ function renderAccountSelector() {
             <label style="flex-grow: 1;">
               <input type="checkbox" class="account-checkbox" 
                      data-bank="${key}"
-                     data-account-id="${acc.plaid_account_id}"
-                     data-disconnected="${acc.is_disconnected}">
-              ${displayName}${warningText}
+                     data-account-id="${acc.plaid_account_id}">
+              ${displayName}
             </label>
           </div>
         </div>
@@ -382,21 +376,6 @@ async function syncTransactions() {
     return;
   }
   
-  // Check if any selected accounts are disconnected
-  const disconnectedSelected = [];
-  const activeAccounts = [];
-  
-  $('.account-checkbox:checked').each(function() {
-    const accountId = $(this).data('account-id');
-    const isDisconnected = $(this).data('disconnected');
-    
-    if (isDisconnected === true || isDisconnected === 'true') {
-      disconnectedSelected.push(accountId);
-    } else {
-      activeAccounts.push(accountId);
-    }
-  });
-  
   // Validate date range
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -407,20 +386,8 @@ async function syncTransactions() {
     return;
   }
   
-  // If only disconnected accounts selected, skip sync and go straight to load
-  if (activeAccounts.length === 0 && disconnectedSelected.length > 0) {
-    showStatus(`⚠️ Selected ${disconnectedSelected.length} disconnected account(s). These accounts are no longer connected to Plaid. You can view existing historical transactions, but cannot sync new ones.`, 'warning');
-    synced = true;
-    document.getElementById('load-btn').disabled = false;
-    return;
-  }
-  
   try {
-    let statusMsg = 'Syncing transactions from Plaid...';
-    if (disconnectedSelected.length > 0) {
-      statusMsg += ` (Skipping ${disconnectedSelected.length} disconnected account(s))`;
-    }
-    showStatus(statusMsg, 'info');
+    showStatus('Syncing transactions from Plaid...', 'info');
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/sync_transactions`, {
       method: 'POST',
@@ -431,7 +398,7 @@ async function syncTransactions() {
       body: JSON.stringify({
         start_date: startDate,
         end_date: endDate,
-        account_ids: activeAccounts  // Only send active accounts for syncing
+        account_ids: selectedAccounts
       })
     });
     
@@ -442,10 +409,7 @@ async function syncTransactions() {
       return;
     }
     
-    let successMsg = `Synced ${data.synced_count || 0} transactions (${data.new_count || 0} new, ${data.updated_count || 0} updated) from ${activeAccounts.length} active account(s)`;
-    if (disconnectedSelected.length > 0) {
-      successMsg += `. ${disconnectedSelected.length} disconnected account(s) were skipped - their historical transactions remain available.`;
-    }
+    let successMsg = `Synced ${data.synced_count || 0} transactions (${data.new_count || 0} new, ${data.updated_count || 0} updated) from ${selectedAccounts.length} active account(s)`;
     showStatus(successMsg, 'success');
     synced = true;
     document.getElementById('load-btn').disabled = false;
