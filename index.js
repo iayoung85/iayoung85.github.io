@@ -1,10 +1,15 @@
-const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app'; // Production backend
-// const BACKEND_URL = 'http://127.0.0.1:3000'; // Local backend for development
+// BACKEND_URL is now defined in config.js and auto-detects environment
 
 // Global variables
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
-let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+let currentUser = null;
+try {
+  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+} catch (e) {
+  console.error('Error parsing currentUser from localStorage', e);
+  localStorage.removeItem('currentUser');
+}
 let idleTimeout;
 let tempLoginCreds = null; // For 2FA login flow
 
@@ -12,10 +17,22 @@ let tempLoginCreds = null; // For 2FA login flow
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Show appropriate view on page load
-$(document).ready(function() {
-  if (authToken && currentUser) {
-    showDashboard();
-  } else {
+$(document).ready(async function() {
+  console.log('Index page ready, waiting for backend URL...');
+  try {
+    await window.BACKEND_URL_PROMISE;
+    console.log('Backend URL resolved:', window.BACKEND_URL);
+    
+    if (authToken && currentUser) {
+      console.log('Auth token and user found, showing dashboard');
+      showDashboard();
+    } else {
+      console.log('No auth token or user, showing login');
+      showLogin();
+    }
+  } catch (e) {
+    console.error('Error in initialization:', e);
+    // Fallback to login if something goes wrong
     showLogin();
   }
 });
@@ -294,6 +311,7 @@ $('#login-form').on('submit', async function(e) {
   const password = $('#login-password').val();
   
   try {
+    console.log(`Attempting login for email: ${email} at ${BACKEND_URL}/api/login`);
     const response = await fetch(`${BACKEND_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

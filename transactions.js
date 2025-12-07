@@ -1,5 +1,5 @@
-const BACKEND_URL = 'https://pythonplaidbackend-production.up.railway.app';
-// const BACKEND_URL = 'http://localhost:3000';
+// BACKEND_URL is now defined in config.js and auto-detects environment
+
 let accounts = [];
 let transactions = [];
 let synced = false;
@@ -117,7 +117,8 @@ function logout() {
 }
 
 // Initialize
-$(document).ready(function() {
+$(document).ready(async function() {
+  await window.BACKEND_URL_PROMISE;
   console.log('Page loaded, initializing...');
   loadAccounts();
   setDefaultDates();
@@ -324,10 +325,8 @@ async function loadAccounts() {
     console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type})`));
     renderAccountSelector();
     
-    // Apply saved account selection if available
-    if (window.savedSelectedAccounts) {
-      applySavedAccountSelection();
-    }
+    // By default, select all accounts after loading
+    selectAllAccounts()
     
     showStatus('Accounts loaded successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -770,7 +769,6 @@ async function saveSettings() {
   try {
     showStatus('Saving settings...', 'info');
     
-    const selectedAccounts = getSelectedAccounts();
     const optionalFields = [];
     $('.field-checkbox:checked').each(function() {
       optionalFields.push($(this).val());
@@ -780,7 +778,6 @@ async function saveSettings() {
     // We don't have a UI for field order yet, so we'll just use a default or current order
     // For now, let's just save what we have
     const settings = {
-      selected_accounts: selectedAccounts,
       optional_fields: optionalFields,
       field_order: ['datetime', 'bank_account', 'name', 'amount', ...optionalFields],
       timezone: timezone
@@ -839,35 +836,10 @@ async function loadSettings() {
       });
     }
     
-    // Note: Account selection is tricky because accounts might not be loaded yet
-    // or might have changed. We'll try to apply them if accounts are loaded,
-    // otherwise we might need to store them and apply after loadAccounts
-    if (settings.selected_accounts && Array.isArray(settings.selected_accounts)) {
-      window.savedSelectedAccounts = settings.selected_accounts;
-      applySavedAccountSelection();
-    }
+    // Note: Account selection is not something that needs to be memorized. just load accounts and select all by default
     
+    $('.account-checkbox').prop('checked', true);
   } catch (error) {
     console.error('Error loading settings:', error);
   }
-}
-
-function applySavedAccountSelection() {
-  if (!window.savedSelectedAccounts || window.savedSelectedAccounts.length === 0) return;
-  
-  // Check if account checkboxes exist yet
-  if ($('.account-checkbox').length === 0) return;
-  
-  console.log('Applying saved account selection:', window.savedSelectedAccounts);
-  
-  // Deselect all first
-  $('.account-checkbox').prop('checked', false);
-  
-  // Select saved accounts
-  window.savedSelectedAccounts.forEach(accountId => {
-    $(`.account-checkbox[data-account-id="${accountId}"]`).prop('checked', true);
-  });
-  
-  // Update bank checkboxes (if all accounts for a bank are selected)
-  // This is a bit complex to do perfectly, so we'll just leave bank checkboxes as is or implement a check later
 }
