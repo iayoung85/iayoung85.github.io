@@ -12,6 +12,7 @@ try {
 }
 let idleTimeout;
 let tempLoginCreds = null; // For 2FA login flow
+let pageHiddenTime = null; // Track when page was hidden
 
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -302,6 +303,39 @@ function setupActivityListeners() {
   events.forEach(event => {
     document.addEventListener(event, resetIdleTimeout, true);
   });
+  
+  // Handle page visibility changes (phone locked, browser tab hidden, etc.)
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    // Page is now hidden (phone locked, tab switched, etc.)
+    // Record the time and clear the timeout to save resources
+    pageHiddenTime = Date.now();
+    if (idleTimeout) {
+      clearTimeout(idleTimeout);
+      idleTimeout = null;
+    }
+  } else {
+    // Page is now visible again
+    if (pageHiddenTime && authToken && currentUser) {
+      const timeHidden = Date.now() - pageHiddenTime;
+      
+      if (timeHidden >= IDLE_TIMEOUT) {
+        // User was away for longer than idle timeout - log them out
+        logout();
+        alert('You have been logged out due to inactivity for security reasons.');
+      } else {
+        // User returned within timeout period - restart the timer
+        pageHiddenTime = null;
+        resetIdleTimeout();
+      }
+    } else if (authToken && currentUser) {
+      // Page became visible but no hidden time was recorded - just reset
+      resetIdleTimeout();
+    }
+  }
 }
 
 // Login form handler
