@@ -369,13 +369,50 @@ $('#login-form').on('submit', async function(e) {
         showDashboard();
       }
     } else {
-      showMessage('login-message', data.error || 'Login failed', 'error');
+      if (data.email_not_verified) {
+        showMessage('login-message', `
+          ${data.error}
+          <div style="margin-top: 10px;">
+            <button type="button" class="btn-link" onclick="resendVerification('${email}')" style="color: #667eea; text-decoration: underline; border: none; background: none; cursor: pointer; padding: 0;">
+              Resend Verification Email
+            </button>
+          </div>
+        `, 'error');
+      } else {
+        showMessage('login-message', data.error || 'Login failed', 'error');
+      }
     }
   } catch (error) {
     console.error('Login error:', error);
     showMessage('login-message', 'Connection error: ' + error.message, 'error');
   }
 });
+
+// Resend verification email
+async function resendVerification(email) {
+  try {
+    const btn = event.target;
+    const originalText = btn.innerText;
+    btn.innerText = 'Sending...';
+    btn.disabled = true;
+    
+    const response = await fetch(`${BACKEND_URL}/api/resend_verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok) {
+      showMessage('login-message', 'Verification email sent! Please check your inbox.', 'success');
+    } else {
+      showMessage('login-message', data.error || 'Failed to send email', 'error');
+    }
+  } catch (error) {
+    showMessage('login-message', 'Connection error: ' + error.message, 'error');
+  }
+}
 
 // 2FA Login form handler
 $('#two-factor-form').on('submit', async function(e) {
@@ -459,6 +496,13 @@ $('#register-form').on('submit', async function(e) {
   const email = $('#register-email').val();
   const password = $('#register-password').val();
   
+  // Check password strength
+  const strength = zxcvbn(password);
+  if (strength.score < 3) {
+    showMessage('register-message', 'Password is too weak. Please make it stronger.', 'error');
+    return;
+  }
+  
   try {
     const response = await fetch(`${BACKEND_URL}/api/register`, {
       method: 'POST',
@@ -474,12 +518,12 @@ $('#register-form').on('submit', async function(e) {
     const data = await response.json();
     
     if (response.ok) {
-      authToken = data.access_token;
-      currentUser = data.user;
-      localStorage.setItem('authToken', authToken);
-      localStorage.setItem('refreshToken', data.refresh_token);
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      showDashboard();
+      // Registration successful - show message and switch to login
+      showMessage('register-message', 'Registration successful! Please check your email to verify your account.', 'success');
+      setTimeout(() => {
+        showLogin();
+        showMessage('login-message', 'Please check your email to verify your account before logging in.', 'success');
+      }, 3000);
     } else {
       showMessage('register-message', data.error || 'Registration failed', 'error');
     }
