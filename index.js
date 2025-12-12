@@ -396,10 +396,15 @@ async function resendVerification(email) {
     btn.innerText = 'Sending...';
     btn.disabled = true;
     
+    const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    
     const response = await fetch(`${BACKEND_URL}/api/resend_verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ 
+        email,
+        frontend_url: frontendUrl
+      })
     });
     
     const data = await response.json();
@@ -463,10 +468,15 @@ $('#forgot-form').on('submit', async function(e) {
   btn.prop('disabled', true).text('Sending...');
   
   try {
+    const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+
     const response = await fetch(`${BACKEND_URL}/api/forgot_password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email })
+      body: JSON.stringify({ 
+        email,
+        frontend_url: frontendUrl
+      })
     });
     
     const data = await response.json();
@@ -504,6 +514,10 @@ $('#register-form').on('submit', async function(e) {
   }
   
   try {
+    // Get current base URL (e.g., http://localhost:5501/iayoung85.github.io or https://bank.isaacyoung.com)
+    // We remove the filename (index.html) to get the base path
+    const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+
     const response = await fetch(`${BACKEND_URL}/api/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -511,7 +525,8 @@ $('#register-form').on('submit', async function(e) {
         email,
         password,
         first_name: firstName,
-        last_name: lastName
+        last_name: lastName,
+        frontend_url: frontendUrl
       })
     });
     
