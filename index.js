@@ -47,7 +47,25 @@ function showLogin() {
   clearMessages();
 }
 
-function showRegister() {
+async function showRegister() {
+  try {
+    // Check if registration is enabled
+    const response = await fetch(`${BACKEND_URL}/api/registration-status`);
+    if (response.ok) {
+      const data = await response.json();
+      if (!data.enabled) {
+        alert('Sorry, registration is currently disabled.');
+        return;
+      }
+    }
+  } catch (error) {
+    console.error('Error checking registration status:', error);
+    // If we can't check status, we might want to fail safe or let them try (and fail at submit)
+    // Given the requirement, let's fail safe if we can't verify it's enabled.
+    alert('Unable to verify registration status. Please try again later.');
+    return;
+  }
+
   $('#login-view').addClass('hidden');
   $('#register-view').removeClass('hidden');
   $('#dashboard-view').addClass('hidden');
@@ -244,6 +262,13 @@ async function refreshAccessToken() {
       const data = await response.json();
       authToken = data.access_token;
       localStorage.setItem('authToken', authToken);
+      
+      // Update refresh token if provided (Sliding Window)
+      if (data.refresh_token) {
+        refreshToken = data.refresh_token;
+        localStorage.setItem('refreshToken', refreshToken);
+      }
+      
       resetIdleTimeout(); // Reset idle timer after successful refresh
       return true;
     } else {
