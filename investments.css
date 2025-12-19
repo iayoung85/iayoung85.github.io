@@ -1,0 +1,94 @@
+/* Inherits from transactions.css */
+
+.activate-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background-color 0.2s;
+}
+
+.activate-btn:hover {
+  background-color: #218838;
+}
+
+.activate-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+.holding-group-header {
+  background-color: #f8f9fa;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.holding-group-header:hover {
+  background-color: #e9ecef;
+}
+
+.holding-detail-row {
+  background-color: #fff;
+  display: none; /* Hidden by default */
+}
+
+.holding-detail-row.expanded {
+  display: table-row;
+}
+
+.holding-detail-row td {
+  padding-left: 40px; /* Indent detail rows */
+  color: #555;
+  font-size: 0.95em;
+}
+
+.expand-icon {
+  display: inline-block;
+  width: 20px;
+  text-align: center;
+  transition: transform 0.2s;
+}
+
+.expanded .expand-icon {
+  transform: rotate(90deg);
+}
+
+.positive-gain {
+  color: #28a745;
+}
+
+.negative-gain {
+  color: #dc3545;
+}
+
+.account-status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.account-status-item:last-child {
+  border-bottom: none;
+}
+
+.status-badge {
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.status-active {
+  background-color: #d4edda;
+  color: #155724;
+}
+
+.status-inactive {
+  background-color: #f8d7da;
+  color: #721c24;
+}

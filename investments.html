@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Investment Holdings Viewer - IAY Financial</title>
+  <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+  <link rel="icon" type="image/png" href="IAY consulting.png">
+  <link rel="stylesheet" href="transactions.css">
+  <link rel="stylesheet" href="investments.css">
+</head>
+<body>
+  <div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <a href="index.html" class="back-link">← Back to Dashboard</a>
+      <a href="transactions.html" class="back-link" style="color: #28a745;">View Transactions →</a>
+    </div>
+    
+    <h1>Investment Holdings Viewer</h1>
+    
+    <!-- Configuration Panel -->
+    <div class="config-panel">
+      <div class="config-header" onclick="toggleConfig()">
+        <span>Configuration & Status</span>
+        <span id="toggle-icon">▼</span>
+      </div>
+      <div class="config-content" id="config-content">
+        
+        <!-- Bank & Account Status -->
+        <div class="config-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="margin: 0;">Investment Accounts Status</h3>
+            <button onclick="refreshAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Refresh List</button>
+          </div>
+          <div id="account-status-list">Loading accounts...</div>
+        </div>
+
+        <!-- Optional Fields -->
+        <div class="config-section">
+          <h3>Optional Fields</h3>
+          <div class="optional-fields-grid">
+            <label><input type="checkbox" class="field-checkbox" value="cost_basis"> Cost Basis</label>
+            <label><input type="checkbox" class="field-checkbox" value="quantity"> Quantity</label>
+            <label><input type="checkbox" class="field-checkbox" value="institution_value"> Institution Value</label>
+            <label><input type="checkbox" class="field-checkbox" value="iso_currency_code"> Currency</label>
+            <label><input type="checkbox" class="field-checkbox" value="unofficial_currency_code"> Unofficial Currency</label>
+          </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="config-section">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <button onclick="syncAllHoldings()">Sync All Holdings</button>
+            <button onclick="saveSettings()" class="secondary">Save Settings</button>
+            
+            <!-- Export Buttons -->
+            <div id="export-buttons" class="export-buttons">
+              <button onclick="exportJSON()" class="secondary">Export JSON</button>
+              <button onclick="copyCSV()" class="secondary">Copy CSV</button>
+              <button onclick="downloadCSV()" class="secondary">Download CSV</button>
+            </div>
+          </div>
+          <div id="status-message"></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    <!-- Holdings Table -->
+    <div id="table-container">
+      <div class="empty-state">
+        Loading investment holdings...
+      </div>
+    </div>
+    
+  </div>
+
+  <script src="config.js"></script>
+  <script src="investments.js"></script>
+</body>
+</html>
