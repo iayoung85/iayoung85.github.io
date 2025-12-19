@@ -24,6 +24,33 @@ $(document).ready(async function() {
   loadAccountStatus();
   loadHoldings();
   loadSettings();
+
+  // Connect Investment ONLY Bank
+  $('#connect-investment-only').on('click', async function() {
+    try {
+        const response = await authenticatedFetch(`${BACKEND_URL}/api/create_link_token?mode=investments_only`);
+        
+        if (response) {
+            const data = await response.json();
+            const handler = Plaid.create({
+                token: data.link_token,
+                onSuccess: async (public_token, metadata) => {
+                    console.log('Plaid Link success:', metadata);
+                    await exchangePublicToken(public_token);
+                    // Reload to show new account
+                    location.reload();
+                },
+                onExit: (err, metadata) => {
+                    if (err) console.error('Plaid Link exit:', err);
+                },
+            });
+            handler.open();
+        }
+    } catch (error) {
+        console.error('Error starting Plaid Link:', error);
+        alert('Failed to start bank connection. Please try again.');
+    }
+  });
 });
 
 // --- API Calls ---
@@ -419,4 +446,28 @@ function copyCSV() {
 function downloadCSV() {
   // Implement CSV generation logic here if needed
   alert('CSV Download not implemented yet');
+}
+
+
+// Helper to exchange token
+async function exchangePublicToken(public_token) {
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/set_access_token`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            },
+            body: JSON.stringify({ public_token: public_token })
+        });
+        
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to exchange token');
+        }
+        return data;
+    } catch (error) {
+        console.error('Error exchanging token:', error);
+        alert('Failed to connect bank: ' + error.message);
+    }
 }
