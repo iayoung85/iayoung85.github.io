@@ -167,7 +167,17 @@ async function loadConnectedBanks() {
             <span style="font-size: 18px; margin-right: 12px;">🏦</span>
             <span>${instName}</span>
           </div>
-          <div style="display: flex; gap: 8px;">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 5px; margin-right: 5px;">
+              <div style="display: flex; flex-direction: column; align-items: center; font-size: 0.7em; color: #666;">
+                <span>Txn</span>
+                <input type="checkbox" disabled ${item.billed_products && item.billed_products.includes('transactions') ? 'checked' : ''} title="Transactions Product Active">
+              </div>
+              <div style="display: flex; flex-direction: column; align-items: center; font-size: 0.7em; color: #666;">
+                <span>Inv</span>
+                <input type="checkbox" disabled ${item.billed_products && item.billed_products.includes('investments') ? 'checked' : ''} title="Investments Product Active">
+              </div>
+            </div>
             <button 
               onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}')"
               style="
