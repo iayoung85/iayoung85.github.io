@@ -262,8 +262,12 @@ async function refreshAccounts() {
 }
 
 function selectAllAccounts() {
-  // Select all account checkboxes
-  document.querySelectorAll('.account-checkbox').forEach(checkbox => {
+  // Select all account checkboxes that are not disabled
+  document.querySelectorAll('.account-checkbox:not(:disabled)').forEach(checkbox => {
+    checkbox.checked = true;
+  });
+  // Also check bank checkboxes if all their children are checked (simplified: just check all enabled bank checkboxes)
+  document.querySelectorAll('.bank-checkbox:not(:disabled)').forEach(checkbox => {
     checkbox.checked = true;
   });
   renderTransactionTable();
@@ -272,6 +276,10 @@ function selectAllAccounts() {
 function deselectAllAccounts() {
   // Deselect all account checkboxes
   document.querySelectorAll('.account-checkbox').forEach(checkbox => {
+    checkbox.checked = false;
+  });
+  // Deselect all bank checkboxes
+  document.querySelectorAll('.bank-checkbox').forEach(checkbox => {
     checkbox.checked = false;
   });
   renderTransactionTable();
@@ -352,6 +360,8 @@ function renderAccountSelector() {
     if (!grouped[institutionKey]) {
       grouped[institutionKey] = {
         name: acc.institution_name,
+        plaid_item_id: acc.plaid_item_id,
+        billed_products: acc.billed_products || [],
         accounts: []
       };
     }
@@ -361,14 +371,24 @@ function renderAccountSelector() {
   let html = '';
   Object.keys(grouped).forEach(key => {
     const group = grouped[key];
+    const isBilled = group.billed_products.includes('transactions');
     
+    let headerAction = '';
+    if (!isBilled) {
+        headerAction = `<button class="activate-btn" style="margin-left: 10px;" onclick="activateBank('${group.plaid_item_id}')">Activate & Sync</button>`;
+    }
+
     html += `
       <div class="account-group">
-        <label>
-          <input type="checkbox" class="bank-checkbox" data-bank="${key}" 
-                 onchange="toggleBank('${key}')">
-          <strong>${group.name}</strong>
-        </label>
+        <div style="display: flex; align-items: center; margin-bottom: 5px;">
+            <label style="display: flex; align-items: center;">
+            <input type="checkbox" class="bank-checkbox" data-bank="${key}" 
+                    onchange="toggleBank('${key}')" ${!isBilled ? 'disabled' : ''}>
+            <strong style="margin-left: 5px;">${group.name}</strong>
+            </label>
+            ${!isBilled ? '<span class="status-badge status-inactive">Available (Not Active)</span>' : '<span class="status-badge status-active">Active</span>'}
+            ${headerAction}
+        </div>
     `;
     
     group.accounts.forEach(acc => {
@@ -384,7 +404,8 @@ function renderAccountSelector() {
             <label style="flex-grow: 1;">
               <input type="checkbox" class="account-checkbox" 
                      data-bank="${key}"
-                     data-account-id="${acc.plaid_account_id}">
+                     data-account-id="${acc.plaid_account_id}"
+                     ${!isBilled ? 'disabled' : ''}>
               ${displayName}
             </label>
           </div>
@@ -398,10 +419,76 @@ function renderAccountSelector() {
   container.innerHTML = html;
 }
 
+async function activateBank(itemId) {
+    if (!confirm('Activating transactions for this bank may incur additional fees. Do you want to proceed?')) {
+        return;
+    }
+
+    const btn = $(`button[onclick="activateBank('${itemId}')"]`);
+    const originalText = btn.text();
+    btn.prop('disabled', true).text('Activating...');
+
+    try {
+        const itemAccounts = accounts.filter(a => a.plaid_item_id === itemId);
+        if (itemAccounts.length === 0) {
+            throw new Error('No accounts found for this bank.');
+        }
+        const accountIds = itemAccounts.map(a => a.plaid_account_id);
+
+        // Use last 30 days for activation
+        const end = new Date();
+        const start = new Date();
+        start.setDate(start.getDate() - 30);
+        
+        const formatDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        };
+
+        await performSync(accountIds, formatDate(start), formatDate(end), true);
+        
+        // Refresh accounts to update status
+        await loadAccounts();
+        showStatus('Activated successfully', 'success');
+
+    } catch (error) {
+        alert('Activation failed: ' + error.message);
+    } finally {
+        btn.prop('disabled', false).text(originalText);
+    }
+}
+
 function toggleBank(institution) {
   const bankCheckbox = $(`.bank-checkbox[data-bank="${institution}"]`);
-  const accountCheckboxes = $(`.account-checkbox[data-bank="${institution}"]`);
+  // Only toggle enabled account checkboxes
+  const accountCheckboxes = $(`.account-checkbox[data-bank="${institution}"]:not(:disabled)`);
   accountCheckboxes.prop('checked', bankCheckbox.prop('checked'));
+}
+
+async function performSync(accountIds, startDate, endDate, activate = false) {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/sync_transactions`, {
+    method: 'POST',
+    mode: 'cors',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      start_date: startDate,
+      end_date: endDate,
+      account_ids: accountIds,
+      activate: activate
+    })
+  });
+  
+  const data = await response.json();
+  
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  
+  return data;
 }
 
 async function syncTransactions() {
@@ -432,25 +519,7 @@ async function syncTransactions() {
   try {
     showStatus('Syncing transactions from Plaid...', 'info');
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/sync_transactions`, {
-      method: 'POST',
-      mode: 'cors',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        start_date: startDate,
-        end_date: endDate,
-        account_ids: selectedAccounts
-      })
-    });
-    
-    const data = await response.json();
-    
-    if (data.error) {
-      showStatus(`Error: ${data.error}`, 'error');
-      return;
-    }
+    const data = await performSync(selectedAccounts, startDate, endDate);
     
     let successMsg = `Synced ${data.synced_count || 0} transactions (${data.new_count || 0} new, ${data.updated_count || 0} updated) from ${selectedAccounts.length} active account(s)`;
     showStatus(successMsg, 'success');

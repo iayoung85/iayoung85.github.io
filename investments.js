@@ -121,22 +121,29 @@ async function loadHoldings() {
   }
 }
 
-async function syncItem(itemId) {
+async function syncItem(itemId, activate = false) {
   try {
+    if (activate && !confirm('Activating investments for this bank may incur additional fees. Do you want to proceed?')) {
+        return;
+    }
+
     const btn = $(`button[data-item="${itemId}"]`);
     const originalText = btn.text();
-    btn.prop('disabled', true).text('Syncing...');
+    btn.prop('disabled', true).text(activate ? 'Activating...' : 'Syncing...');
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/sync`, {
       method: 'POST',
-      body: JSON.stringify({ item_id: itemId })
+      body: JSON.stringify({ 
+          item_id: itemId,
+          activate: activate
+      })
     });
     
     if (response.ok) {
       // Refresh data
       await loadAccountStatus();
       await loadHoldings();
-      showMessage('Synced successfully', 'success');
+      showMessage(activate ? 'Activated successfully' : 'Synced successfully', 'success');
     } else {
       const err = await response.json();
       alert('Sync failed: ' + err.error);
@@ -232,7 +239,7 @@ function renderAccountStatus() {
     } else if (item.status === 'available') {
       statusClass = 'status-inactive';
       statusText = 'Available (Not Active)';
-      actionHtml = `<button class="activate-btn" data-item="${item.plaid_item_id}" onclick="syncItem('${item.plaid_item_id}')">Activate & Sync</button>`;
+      actionHtml = `<button class="activate-btn" data-item="${item.plaid_item_id}" onclick="syncItem('${item.plaid_item_id}', true)">Activate & Sync</button>`;
     }
     
     html += `
