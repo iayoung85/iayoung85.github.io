@@ -35,7 +35,7 @@ $(document).ready(async function() {
             const handler = Plaid.create({
                 token: data.link_token,
                 onSuccess: async (public_token, metadata) => {
-                    console.log('Plaid Link success:', metadata);
+                    // Plaid link succeeded
                     await exchangePublicToken(public_token);
                     // Reload to show new account
                     location.reload();

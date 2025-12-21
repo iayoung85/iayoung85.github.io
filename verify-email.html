@@ -23,12 +23,17 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.3/jquery.min.js"></script>
   <script src="config.js"></script>
   <script>
-    $(document).ready(async function() {
+    (async function() {
       // Wait for config to load
       try {
-        await window.BACKEND_URL_PROMISE;
+        if (window.BACKEND_URL_PROMISE) {
+            await window.BACKEND_URL_PROMISE;
+        } else {
+            BACKEND_URL = "http://localhost:3000";
+            window.BACKEND_URL = "http://localhost:3000";
+        }
       } catch (e) {
-        console.error("Config load error", e);
+        $('#verify-message').append('<div class="message error">Failed to detect backend server. Please ensure the server is running.</div>');
       }
 
       // Get token from URL
@@ -43,12 +48,25 @@
         return;
       }
 
+      if (!BACKEND_URL) {
+         $('#verify-view h1').text('Connection Error');
+         $('.subtitle').hide();
+         $('#verify-message').html('<div class="message error">Could not connect to backend server. Is it running?</div>');
+         return;
+      }
+
       try {
+        // Add timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+
         const response = await fetch(`${BACKEND_URL}/api/verify_email`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token })
+          body: JSON.stringify({ token }),
+          signal: controller.signal
         });
+        clearTimeout(timeoutId);
         
         const data = await response.json();
         
@@ -69,7 +87,7 @@
         $('#verify-message').html(`<div class="message error">Connection error: ${error.message}</div>`);
         $('#login-btn').removeClass('hidden').text('Back to Login');
       }
-    });
+    })();
   </script>
 </body>
 </html>

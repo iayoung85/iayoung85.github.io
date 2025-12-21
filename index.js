@@ -19,16 +19,12 @@ const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Show appropriate view on page load
 $(document).ready(async function() {
-  console.log('Index page ready, waiting for backend URL...');
   try {
     await window.BACKEND_URL_PROMISE;
-    console.log('Backend URL resolved:', window.BACKEND_URL);
     
     if (authToken && currentUser) {
-      console.log('Auth token and user found, showing dashboard');
       showDashboard();
     } else {
-      console.log('No auth token or user, showing login');
       showLogin();
     }
   } catch (e) {
@@ -380,7 +376,6 @@ $('#login-form').on('submit', async function(e) {
   const password = $('#login-password').val();
   
   try {
-    console.log(`Attempting login for email: ${email} at ${BACKEND_URL}/api/login`);
     const response = await fetch(`${BACKEND_URL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -680,9 +675,7 @@ $('#link-button').on('click', async function() {
           showMessage('dashboard-message', 'Connection cancelled or failed', 'error');
         }
       },
-      onEvent: (eventName, metadata) => {
-        console.log('Plaid Event:', eventName);
-      }
+      onEvent: (eventName, metadata) => {}
     });
     handler.open();
   } catch (error) {
@@ -742,9 +735,7 @@ async function reconnectBank(itemId, bankName) {
           showMessage('dashboard-message', 'Reconnection cancelled or failed', 'error');
         }
       },
-      onEvent: (eventName, metadata) => {
-        console.log('Plaid Event:', eventName);
-      }
+      onEvent: (eventName, metadata) => {}
     });
     handler.open();
   } catch (error) {
@@ -807,9 +798,7 @@ async function disconnectBank(itemId, bankName) {
       onExit: (err, metadata) => {
         if (err != null) console.error('OAuth Error:', err);
       },
-      onEvent: (eventName, metadata) => {
-        console.log('Event:', eventName);
-      }
+      onEvent: (eventName, metadata) => {}
     });
     handler.open();
   } catch (err) {

@@ -14,10 +14,8 @@ try {
 
 // Initialize on page load
 $(document).ready(async function() {
-  console.log('Account page ready, waiting for backend URL...');
   try {
     await window.BACKEND_URL_PROMISE;
-    console.log('Backend URL resolved:', window.BACKEND_URL);
     
     // Check for email verification/rejection tokens in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -84,7 +82,6 @@ function setupSettingsMenu() {
 }
 
 function loadSectionContent(section) {
-  console.log(`Loading section: ${section}`);
   
   switch(section) {
     case 'profile':
@@ -442,83 +439,97 @@ async function changePassword() {
 // SECTION: MANAGE SUBSCRIPTION (Framework)
 // ============================================
 
-function loadSubscriptionDetails() {
+async function loadSubscriptionDetails() {
   const container = $('#subscription-content');
   container.html('<div class="loading">Loading subscription details...</div>');
 
-  // Mock data for Phase 1
-  const html = `
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Current Subscription Status</h3>
-      </div>
-      <p><strong>Status:</strong> <span style="color: #28a745;">Active</span></p>
-      <p><strong>Renewal Date:</strong> 2025-01-20</p>
-      <p><strong>Billing Period:</strong> 2024-12-20 to 2025-01-19</p>
-    </div>
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/subscription-status`);
+    const data = await response.json();
 
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Your Selected Bank Connections</h3>
-      </div>
-      <div class="form-group">
-        <label for="transaction-tokens">Transaction-Based Bank Connections</label>
-        <input type="number" id="transaction-tokens" value="4" min="0" disabled>
-        <p class="text-muted">@ \$0.30/month each</p>
-      </div>
-      <div class="form-group">
-        <label for="investment-tokens">Investment-Based Bank Connections</label>
-        <input type="number" id="investment-tokens" value="2" min="0" disabled>
-        <p class="text-muted">@ \$0.18/month each</p>
-      </div>
-      <button class="btn btn-primary" onclick="editSubscriptionMode()">Change for Next Month</button>
-    </div>
+    if (!response.ok) {
+      container.html(`<div class="message error">${data.error || 'Failed to load subscription'}</div>`);
+      return;
+    }
 
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Monthly Pricing Breakdown</h3>
+    const statusColor = data.status === 'active' ? '#28a745' : '#dc3545';
+    
+    const html = `
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Current Subscription Status</h3>
+        </div>
+        <p><strong>Status:</strong> <span style="color: ${statusColor}; text-transform: capitalize;">${data.status}</span></p>
+        <p><strong>Renewal Date:</strong> ${data.renewal_date}</p>
+        <p><strong>Billing Period:</strong> ${data.billing_month_start} to ${data.billing_month_end}</p>
       </div>
-      <table style="width: 100%; font-size: 14px;">
-        <tr style="border-bottom: 1px solid #e0e0e0;">
-          <td style="padding: 8px 0;">Plaid Transaction Fees (4 × \$0.30)</td>
-          <td style="text-align: right; padding: 8px 0;">\$1.20</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #e0e0e0;">
-          <td style="padding: 8px 0;">Plaid Investment Fees (2 × \$0.18)</td>
-          <td style="text-align: right; padding: 8px 0;">\$0.36</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #e0e0e0;">
-          <td style="padding: 8px 0;">Server Fee</td>
-          <td style="text-align: right; padding: 8px 0;">\$0.50</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #e0e0e0;">
-          <td style="padding: 8px 0;">Stripe Processing Fee</td>
-          <td style="text-align: right; padding: 8px 0;">\$0.30</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px 0;"><strong>App Fee</strong></td>
-          <td style="text-align: right; padding: 8px 0;"><strong>\$0.50</strong></td>
-        </tr>
-        <tr style="background: #f0f0f0; font-weight: 600; border-radius: 4px;">
-          <td style="padding: 12px 8px;"><strong>Total Monthly Cost</strong></td>
-          <td style="text-align: right; padding: 12px 8px;"><strong>\$2.86</strong></td>
-        </tr>
-      </table>
-    </div>
 
-    <div class="card" style="background: #ffeaa7; border-color: #ffd93d;">
-      <p class="text-muted" style="color: #d68f00; margin: 0;">
-        <strong>Note:</strong> Subscriptions cannot be cancelled. To stop all charges, you must delete your account. However, you can adjust the number of bank connections you pay for each month.
-      </p>
-    </div>
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Your Selected Bank Connections</h3>
+        </div>
+        <div class="form-group">
+          <label for="transaction-tokens">Transaction-Based Bank Connections</label>
+          <input type="number" id="transaction-tokens" value="${data.selected_limits.transaction}" min="0" disabled>
+          <p class="text-muted">@ \$0.30/month each</p>
+        </div>
+        <div class="form-group">
+          <label for="investment-tokens">Investment-Based Bank Connections</label>
+          <input type="number" id="investment-tokens" value="${data.selected_limits.investment}" min="0" disabled>
+          <p class="text-muted">@ \$0.18/month each</p>
+        </div>
+        <button class="btn btn-primary" onclick="editSubscriptionMode(${data.selected_limits.transaction}, ${data.selected_limits.investment})">Change for Next Month</button>
+      </div>
 
-    <div id="subscription-message"></div>
-  `;
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Monthly Pricing Breakdown</h3>
+        </div>
+        <table style="width: 100%; font-size: 14px;">
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 8px 0;">Plaid Transaction Fees (${data.selected_limits.transaction} × \$0.30)</td>
+            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.plaid_transaction_fee.toFixed(2)}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 8px 0;">Plaid Investment Fees (${data.selected_limits.investment} × \$0.18)</td>
+            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.plaid_investment_fee.toFixed(2)}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 8px 0;">Server Fee</td>
+            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.server_fee.toFixed(2)}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 8px 0;">Stripe Processing Fee</td>
+            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.stripe_fee.toFixed(2)}</td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 0;"><strong>App Fee</strong></td>
+            <td style="text-align: right; padding: 8px 0;"><strong>\$${data.pricing_breakdown.app_fee.toFixed(2)}</strong></td>
+          </tr>
+          <tr style="background: #f0f0f0; font-weight: 600; border-radius: 4px;">
+            <td style="padding: 12px 8px;"><strong>Total Monthly Cost</strong></td>
+            <td style="text-align: right; padding: 12px 8px;"><strong>\$${data.pricing_breakdown.total.toFixed(2)}</strong></td>
+          </tr>
+        </table>
+      </div>
 
-  container.html(html);
+      <div class="card" style="background: #ffeaa7; border-color: #ffd93d;">
+        <p class="text-muted" style="color: #d68f00; margin: 0;">
+          <strong>Note:</strong> Subscriptions cannot be cancelled. To stop all charges, you must delete your account. However, you can adjust the number of bank connections you pay for each month.
+        </p>
+      </div>
+
+      <div id="subscription-message"></div>
+    `;
+
+    container.html(html);
+  } catch (error) {
+    console.error('Error loading subscription:', error);
+    container.html(`<div class="message error">Connection error: ${error.message}</div>`);
+  }
 }
 
-function editSubscriptionMode() {
+function editSubscriptionMode(currentTx, currentInv) {
   const html = `
     <div class="card">
       <div class="card-header">
@@ -527,12 +538,12 @@ function editSubscriptionMode() {
       <form id="subscription-form">
         <div class="form-group">
           <label for="edit-transaction-tokens">Transaction-Based Bank Connections</label>
-          <input type="number" id="edit-transaction-tokens" value="4" min="0" required>
+          <input type="number" id="edit-transaction-tokens" value="${currentTx}" min="0" required>
           <p class="text-muted">@ \$0.30/month each</p>
         </div>
         <div class="form-group">
           <label for="edit-investment-tokens">Investment-Based Bank Connections</label>
-          <input type="number" id="edit-investment-tokens" value="2" min="0" required>
+          <input type="number" id="edit-investment-tokens" value="${currentInv}" min="0" required>
           <p class="text-muted">@ \$0.18/month each</p>
         </div>
         <div class="flex-group">
@@ -604,94 +615,142 @@ function calculateNewSubscriptionTotal() {
   $('#subscription-edit-message').html(summary);
 }
 
-function confirmSubscriptionUpdate(transactionTokens, investmentTokens) {
-  showMessage('subscription-edit-message', '✓ Subscription updated for next month!', 'success');
-  setTimeout(() => loadSubscriptionDetails(), 1500);
+async function confirmSubscriptionUpdate(transactionTokens, investmentTokens) {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/subscription-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        transaction_tokens: transactionTokens,
+        investment_tokens: investmentTokens
+      })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showMessage('subscription-edit-message', '✓ Subscription updated for next month!', 'success');
+      setTimeout(() => loadSubscriptionDetails(), 1500);
+    } else {
+      showMessage('subscription-edit-message', data.error || 'Failed to update subscription', 'error');
+    }
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    showMessage('subscription-edit-message', `Connection error: ${error.message}`, 'error');
+  }
 }
 
 // ============================================
 // SECTION: TOKEN WALLET
 // ============================================
 
-function loadTokenWallet() {
+async function loadTokenWallet() {
   const container = $('#tokens-content');
   container.html('<div class="loading">Loading token wallet...</div>');
 
-  // Mock data for Phase 1
-  const html = `
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Current Token Balance</h3>
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
-        <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 32px; font-weight: 600; color: #182742;">4</div>
-          <div style="color: #666; font-size: 12px;">Transaction Tokens</div>
-          <p class="text-muted" style="font-size: 11px; margin-top: 5px;">Each connection costs \$0.30/mo</p>
-        </div>
-        <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 32px; font-weight: 600; color: #182742;">2</div>
-          <div style="color: #666; font-size: 12px;">Investment Tokens</div>
-          <p class="text-muted" style="font-size: 11px; margin-top: 5px;">Each connection costs \$0.18/mo</p>
-        </div>
-        <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 32px; font-weight: 600; color: #182742;">1</div>
-          <div style="color: #666; font-size: 12px;">Swap Tokens</div>
-          <p class="text-muted" style="font-size: 11px; margin-top: 5px;">Swap banks within month</p>
-        </div>
-      </div>
-    </div>
+  try {
+    // Fetch wallet data and history in parallel
+    const [walletResponse, historyResponse] = await Promise.all([
+      authenticatedFetch(`${BACKEND_URL}/api/token-wallet`),
+      authenticatedFetch(`${BACKEND_URL}/api/get-token-history?page=1&per_page=10`)
+    ]);
 
-    <div class="card">
-      <div class="card-header">
-        <h3 class="card-title">Token Usage History</h3>
-      </div>
-      <div style="overflow-x: auto;">
-        <table style="width: 100%; font-size: 13px;">
-          <thead>
-            <tr style="border-bottom: 2px solid #e0e0e0;">
-              <th style="text-align: left; padding: 10px 0;">Date</th>
-              <th style="text-align: left; padding: 10px 0;">Token Type</th>
-              <th style="text-align: left; padding: 10px 0;">Action</th>
-              <th style="text-align: left; padding: 10px 0;">Reason</th>
-              <th style="text-align: right; padding: 10px 0;">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr style="border-bottom: 1px solid #e0e0e0;">
-              <td style="padding: 10px 0;">2025-12-20</td>
-              <td style="padding: 10px 0;"><span style="background: #e3f2fd; color: #1976d2; padding: 2px 6px; border-radius: 3px; font-size: 11px;">Transaction</span></td>
-              <td style="padding: 10px 0;">Consumed</td>
-              <td style="padding: 10px 0;">Bank connection added</td>
-              <td style="text-align: right; padding: 10px 0;"><strong>3</strong></td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e0e0e0;">
-              <td style="padding: 10px 0;">2025-12-01</td>
-              <td style="padding: 10px 0;"><span style="background: #f0f0f0; color: #666; padding: 2px 6px; border-radius: 3px; font-size: 11px;">Transaction</span></td>
-              <td style="padding: 10px 0;">Refilled</td>
-              <td style="padding: 10px 0;">Monthly refill</td>
-              <td style="text-align: right; padding: 10px 0;"><strong>4</strong></td>
-            </tr>
-            <tr style="border-bottom: 1px solid #e0e0e0;">
-              <td style="padding: 10px 0;">2025-11-20</td>
-              <td style="padding: 10px 0;"><span style="background: #fff3e0; color: #e65100; padding: 2px 6px; border-radius: 3px; font-size: 11px;">Investment</span></td>
-              <td style="padding: 10px 0;">Consumed</td>
-              <td style="padding: 10px 0;">Investment account added</td>
-              <td style="text-align: right; padding: 10px 0;"><strong>1</strong></td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
+    const walletData = await walletResponse.json();
+    const historyData = await historyResponse.json();
 
-    <div class="card" style="background: #efe; border-color: #cfc;">
-      <p class="text-muted" style="color: #3c3; margin: 0;">
-        <strong>Next Refill:</strong> Your tokens will be refilled on 2025-01-20 based on your subscription. You'll receive 4 transaction tokens, 2 investment tokens, and 1 swap token.
-      </p>
-    </div>
-  `;
+    if (!walletResponse.ok) {
+      container.html(`<div class="message error">${walletData.error || 'Failed to load token wallet'}</div>`);
+      return;
+    }
 
-  container.html(html);
+    // Build History Rows
+    let historyRows = '';
+    if (historyData.history && historyData.history.length > 0) {
+      historyRows = historyData.history.map(item => {
+        let badgeClass = 'badge-default';
+        let badgeColor = '#666';
+        let badgeBg = '#f0f0f0';
+        
+        if (item.token_type === 'transaction') {
+          badgeColor = '#1976d2';
+          badgeBg = '#e3f2fd';
+        } else if (item.token_type === 'investment') {
+          badgeColor = '#e65100';
+          badgeBg = '#fff3e0';
+        }
+
+        return `
+          <tr style="border-bottom: 1px solid #e0e0e0;">
+            <td style="padding: 10px 0;">${item.date}</td>
+            <td style="padding: 10px 0;"><span style="background: ${badgeBg}; color: ${badgeColor}; padding: 2px 6px; border-radius: 3px; font-size: 11px; text-transform: capitalize;">${item.token_type}</span></td>
+            <td style="padding: 10px 0;">${item.action}</td>
+            <td style="padding: 10px 0;">${item.reason || '-'}</td>
+            <td style="text-align: right; padding: 10px 0;"><strong>${item.balance}</strong></td>
+          </tr>
+        `;
+      }).join('');
+    } else {
+      historyRows = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: #666;">No token history available.</td></tr>';
+    }
+
+    const html = `
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Current Token Balance</h3>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+          <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; text-align: center;">
+            <div style="font-size: 32px; font-weight: 600; color: #182742;">${walletData.current_tokens.transaction}</div>
+            <div style="color: #666; font-size: 12px;">Transaction Tokens</div>
+            <p class="text-muted" style="font-size: 11px; margin-top: 5px;">Each connection costs \$0.30/mo</p>
+          </div>
+          <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; text-align: center;">
+            <div style="font-size: 32px; font-weight: 600; color: #182742;">${walletData.current_tokens.investment}</div>
+            <div style="color: #666; font-size: 12px;">Investment Tokens</div>
+            <p class="text-muted" style="font-size: 11px; margin-top: 5px;">Each connection costs \$0.18/mo</p>
+          </div>
+          <div style="background: #f0f0f0; padding: 15px; border-radius: 6px; text-align: center;">
+            <div style="font-size: 32px; font-weight: 600; color: #182742;">${walletData.current_tokens.swap}</div>
+            <div style="color: #666; font-size: 12px;">Swap Tokens</div>
+            <p class="text-muted" style="font-size: 11px; margin-top: 5px;">Swap banks within month</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h3 class="card-title">Token Usage History</h3>
+        </div>
+        <div style="overflow-x: auto;">
+          <table style="width: 100%; font-size: 13px;">
+            <thead>
+              <tr style="border-bottom: 2px solid #e0e0e0;">
+                <th style="text-align: left; padding: 10px 0;">Date</th>
+                <th style="text-align: left; padding: 10px 0;">Token Type</th>
+                <th style="text-align: left; padding: 10px 0;">Action</th>
+                <th style="text-align: left; padding: 10px 0;">Reason</th>
+                <th style="text-align: right; padding: 10px 0;">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${historyRows}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="background: #efe; border-color: #cfc;">
+        <p class="text-muted" style="color: #3c3; margin: 0;">
+          <strong>Next Refill:</strong> Your tokens will be refilled on the next billing cycle based on your subscription settings.
+        </p>
+      </div>
+    `;
+
+    container.html(html);
+  } catch (error) {
+    console.error('Error loading token wallet:', error);
+    container.html(`<div class="message error">Connection error: ${error.message}</div>`);
+  }
 }
 
 // ============================================

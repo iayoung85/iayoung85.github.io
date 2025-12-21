@@ -12,22 +12,19 @@ function detectBackendUrl() {
     return new Promise((resolve) => {
       function tryNext() {
         if (checked >= ports.length) {
-          // Fallback to production if none work
-          console.log('Local backend not found, falling back to production');
+          // Fallback to production if none work (silent)
           resolve('https://pythonplaidbackend-production.up.railway.app');
           return;
         }
         const url = `http://${hostname}:${ports[checked]}`;
-        console.log(`Checking backend at ${url}...`);
         
-        // Add timeout to prevent hanging
+        // Add timeout to prevent hanging (3 seconds)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         
         fetch(`${url}/health`, { signal: controller.signal }).then(r => {
           clearTimeout(timeoutId);
           if (r.ok) {
-            console.log(`Backend found at ${url}`);
             resolve(url);
           } else {
             checked++;
@@ -35,7 +32,6 @@ function detectBackendUrl() {
           }
         }).catch((e) => {
           clearTimeout(timeoutId);
-          // console.log(`Failed to connect to ${url}:`, e);
           checked++;
           tryNext();
         });
@@ -52,6 +48,5 @@ function detectBackendUrl() {
 window.BACKEND_URL_PROMISE = detectBackendUrl().then(url => {
   BACKEND_URL = url;
   window.BACKEND_URL = url;
-  console.log(`Backend URL detected: ${url}`);
   return url;
 });

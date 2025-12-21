@@ -11,10 +11,8 @@ let idleTimeout;
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
-console.log('Token check:', token ? 'Token found' : 'No token found');
 
 if (!token) {
-  console.log('No token, redirecting to index.html');
   alert('Please log in first');
   window.location.href = 'index.html';
 }
@@ -58,7 +56,6 @@ async function authenticatedFetch(url, options = {}) {
   
   // If we get a 401, try to refresh the token
   if (response.status === 401) {
-    console.log('Access token expired, attempting refresh...');
     const refreshed = await refreshAccessToken();
     
     if (refreshed) {
@@ -88,7 +85,6 @@ function resetIdleTimeout() {
   // Only set idle timeout if user is logged in
   if (token && currentUser) {
     idleTimeout = setTimeout(() => {
-      console.log('Idle timeout reached - logging out for security');
       logout();
       alert('You have been logged out due to inactivity for security reasons.');
     }, IDLE_TIMEOUT);
@@ -119,7 +115,6 @@ function logout() {
 // Initialize
 $(document).ready(async function() {
   await window.BACKEND_URL_PROMISE;
-  console.log('Page loaded, initializing...');
   loadAccounts();
   setDefaultDates();
   resetIdleTimeout();
@@ -287,16 +282,13 @@ function deselectAllAccounts() {
 
 async function loadAccounts() {
   try {
-    console.log('=== loadAccounts() START ===');
-    console.log('Token:', token);
-    console.log('BACKEND_URL:', BACKEND_URL);
+    
     
     showStatus('Loading accounts...', 'info');
     
     // Use new endpoint that gets all accounts including disconnected ones
     const url = `${BACKEND_URL}/api/accounts/all?t=${Date.now()}`;
-    console.log('Fetch URL:', url);
-    console.log('Fetch options:', {
+    
       method: 'GET',
       mode: 'cors',
       cache: 'no-cache',
@@ -305,21 +297,17 @@ async function loadAccounts() {
       }
     });
     
-    console.log('About to call fetch...');
+    
     const response = await authenticatedFetch(url, {
       method: 'GET',
       mode: 'cors',
       cache: 'no-cache'
     });
     
-    console.log('Fetch completed!');
-    console.log('Response status:', response.status);
-    console.log('Response ok:', response.ok);
-    console.log('Response headers:', response.headers);
+    
     
     const data = await response.json();
-    console.log('Response data:', data);
-    console.log('=== loadAccounts() END ===');
+    
     
     if (data.error) {
       showStatus(`Error: ${data.error}`, 'error');
@@ -329,8 +317,7 @@ async function loadAccounts() {
     accounts = data.accounts || [];
     // Filter out investment accounts as they are not supported
     accounts = accounts.filter(acc => acc.account_type !== 'investment');
-    console.log('Accounts loaded:', accounts.length);
-    console.log('Account details:', accounts.map(a => `${a.institution_name} - ${a.account_name} (${a.account_type})`));
+    
     renderAccountSelector();
     
     // By default, select all accounts after loading
@@ -852,7 +839,7 @@ async function saveSettings() {
       timezone: timezone
     };
     
-    console.log('Saving settings:', settings);
+    
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transaction_viewer_settings`, {
       method: 'POST',
@@ -878,7 +865,7 @@ async function saveSettings() {
 
 async function loadSettings() {
   try {
-    console.log('Loading settings...');
+    
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transaction_viewer_settings`, {
       method: 'GET'
     });
@@ -888,7 +875,7 @@ async function loadSettings() {
     }
     
     const settings = await response.json();
-    console.log('Loaded settings:', settings);
+    
     
     // Apply settings
     if (settings.timezone) {
