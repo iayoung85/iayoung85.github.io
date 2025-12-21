@@ -288,26 +288,13 @@ async function loadAccounts() {
     
     // Use new endpoint that gets all accounts including disconnected ones
     const url = `${BACKEND_URL}/api/accounts/all?t=${Date.now()}`;
-    
-      method: 'GET',
-      mode: 'cors',
-      cache: 'no-cache',
-      headers: {
-        'Authorization': `Bearer ${token ? token.substring(0, 20) + '...' : 'NULL'}`
-      }
-    });
-    
-    
     const response = await authenticatedFetch(url, {
       method: 'GET',
       mode: 'cors',
       cache: 'no-cache'
     });
     
-    
-    
     const data = await response.json();
-    
     
     if (data.error) {
       showStatus(`Error: ${data.error}`, 'error');
