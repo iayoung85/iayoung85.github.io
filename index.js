@@ -756,6 +756,195 @@ async function disconnectBank(itemId, bankName) {
   }
   
   try {
+    // First call: detect if swap opportunity exists
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId })
+    });
+    
+    const data = await response.json();
+    
+    if (response.status === 200 && data.swap_opportunity) {
+      // Swap opportunity detected - ask user what they want to do
+      showSwapTokenModal(itemId, bankName, data.swap_opportunity);
+    } else if (response.ok) {
+      // No swap opportunity, item removed successfully
+      showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
+      loadConnectedBanks();
+    } else {
+      showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to disconnect bank'), 'error');
+    }
+  } catch (error) {
+    showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+  }
+}
+
+// Show modal for swap token options
+function showSwapTokenModal(itemId, bankName, swapOpportunity) {
+  const options = swapOpportunity.options || [];
+  const maxSwaps = swapOpportunity.max_swaps_available || 0;
+  
+  let optionsHtml = '';
+  
+  if (options.includes('transaction') && options.includes('investment')) {
+    // Both options available
+    if (maxSwaps >= 2) {
+      optionsHtml = `
+        <label style="display: block; margin: 10px 0; cursor: pointer;">
+          <input type="radio" name="swap-choice" value="transaction" checked> Get 1 Transaction Token
+        </label>
+        <label style="display: block; margin: 10px 0; cursor: pointer;">
+          <input type="radio" name="swap-choice" value="investment"> Get 1 Investment Token
+        </label>
+        <label style="display: block; margin: 10px 0; cursor: pointer;">
+          <input type="radio" name="swap-choice" value="both"> Get Both (uses 2 swap tokens)
+        </label>
+      `;
+    } else {
+      optionsHtml = `
+        <label style="display: block; margin: 10px 0; cursor: pointer;">
+          <input type="radio" name="swap-choice" value="transaction" checked> Get 1 Transaction Token
+        </label>
+        <label style="display: block; margin: 10px 0; cursor: pointer;">
+          <input type="radio" name="swap-choice" value="investment"> Get 1 Investment Token
+        </label>
+        <p style="color: #666; font-size: 0.9em;">You have ${maxSwaps} swap token(s) available. To get both, you'd need 2 swap tokens.</p>
+      `;
+    }
+  } else if (options.includes('transaction')) {
+    optionsHtml = `
+      <p style="margin: 10px 0;">Your transaction tokens are depleted. Use a swap token to get 1 transaction token?</p>
+      <input type="hidden" name="swap-choice" value="transaction">
+    `;
+  } else if (options.includes('investment')) {
+    optionsHtml = `
+      <p style="margin: 10px 0;">Your investment tokens are depleted. Use a swap token to get 1 investment token?</p>
+      <input type="hidden" name="swap-choice" value="investment">
+    `;
+  }
+  
+  const modal = $(`
+    <div style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    " id="swap-modal-overlay" onclick="if(event.target === this) closeSwapModal()">
+      <div style="
+        background: white;
+        border-radius: 8px;
+        padding: 24px;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      ">
+        <h3 style="margin-top: 0; color: #333;">Swap Token Opportunity</h3>
+        <p style="color: #666; margin: 10px 0;">
+          You're disconnecting <strong>${bankName}</strong>. 
+          ${swapOpportunity.reason}
+        </p>
+        <p style="color: #666; margin: 10px 0; font-weight: 500;">
+          You have <strong>${maxSwaps} swap token(s)</strong> available. Would you like to use one?
+        </p>
+        
+        <div style="margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+          ${optionsHtml}
+        </div>
+        
+        <div style="display: flex; gap: 10px; margin-top: 20px;">
+          <button 
+            onclick="applySwapAndDisconnect('${itemId}', '${bankName}')"
+            style="
+              flex: 1;
+              padding: 10px;
+              background: #28a745;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-weight: 500;
+            "
+            onmouseover="this.style.background='#218838';"
+            onmouseout="this.style.background='#28a745';"
+          >
+            Use Swap Token
+          </button>
+          <button 
+            onclick="closeSwapModalAndDisconnect('${itemId}')"
+            style="
+              flex: 1;
+              padding: 10px;
+              background: #dc3545;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+              font-weight: 500;
+            "
+            onmouseover="this.style.background='#c82333';"
+            onmouseout="this.style.background='#dc3545';"
+          >
+            Skip & Disconnect
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+  
+  $('body').append(modal);
+}
+
+function closeSwapModal() {
+  $('#swap-modal-overlay').remove();
+}
+
+async function applySwapAndDisconnect(itemId, bankName) {
+  // Get value from either checked radio or hidden input
+  const productType = $('input[name="swap-choice"]:checked').val() || $('input[name="swap-choice"][type="hidden"]').val();
+  
+  if (!productType) {
+    alert('Please select a token type');
+    return;
+  }
+  
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        item_id: itemId,
+        apply_swap: true,
+        product_type: productType
+      })
+    });
+    
+    const data = await response.json();
+    
+    closeSwapModal();
+    
+    if (response.ok) {
+      const tokenType = productType === 'both' ? 'both tokens' : `${productType} token`;
+      showMessage('dashboard-message', `✓ Bank disconnected and swap applied! You received 1 ${tokenType}.`, 'success');
+      loadConnectedBanks();
+    } else {
+      showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to apply swap'), 'error');
+    }
+  } catch (error) {
+    closeSwapModal();
+    showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+  }
+}
+
+async function closeSwapModalAndDisconnect(itemId) {
+  closeSwapModal();
+  
+  try {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -766,7 +955,6 @@ async function disconnectBank(itemId, bankName) {
     
     if (response.ok) {
       showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
-      // Refresh connected banks list
       loadConnectedBanks();
     } else {
       showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to disconnect bank'), 'error');
