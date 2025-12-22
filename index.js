@@ -142,6 +142,7 @@ async function loadConnectedBanks() {
     items.forEach(item => {
       const instName = item.institution_name || 'Unknown Bank';
       const itemId = item.plaid_item_id;
+      const flagged = !!item.removal_flag;
       html += `
         <li style="
           margin-bottom: 8px; 
@@ -174,6 +175,28 @@ async function loadConnectedBanks() {
                 <input type="checkbox" disabled ${item.billed_products && item.billed_products.includes('investments') ? 'checked' : ''} title="Investments Product Active">
               </div>
             </div>
+            <button 
+              onclick="toggleRemovalFlag('${itemId}', ${flagged})"
+              style="
+                background: ${flagged ? '#b71c1c' : '#ff6f6f'};
+                color: white;
+                border: none;
+                border-radius: 50%;
+                width: 28px;
+                height: 28px;
+                font-size: 16px;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                transition: background 0.2s, transform 0.1s;
+                padding: 0;
+                line-height: 1;
+              "
+              onmouseover="this.style.transform='scale(1.1)';"
+              onmouseout="this.style.transform='scale(1)';"
+              title="${flagged ? 'Unflag removal' : 'Flag for removal at end of current subscription cycle'}"
+            >⚑</button>
             <button 
               onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}')"
               style="
@@ -230,6 +253,29 @@ async function loadConnectedBanks() {
     console.error('Error message:', error.message);
     console.error('Error stack:', error.stack);
     $('#connections-list').html(`<p style="color: #c33;">Error loading connected banks: ${error.message}</p>`);
+  }
+}
+
+async function toggleRemovalFlag(itemId, currentlyFlagged) {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/item_flag`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ item_id: itemId, flag: !currentlyFlagged })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      const msg = !currentlyFlagged ? '✓ Flagged for removal at end of cycle.' : '✓ Unflagged successfully.';
+      showMessage('dashboard-message', msg, 'success');
+      loadConnectedBanks();
+    } else {
+      const detail = data.message || data.error || 'Failed to update flag';
+      showMessage('dashboard-message', `Error: ${detail}`, 'error');
+    }
+  } catch (error) {
+    showMessage('dashboard-message', 'Error: ' + error.message, 'error');
   }
 }
 

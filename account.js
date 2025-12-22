@@ -454,6 +454,26 @@ async function loadSubscriptionDetails() {
 
     const statusColor = data.status === 'active' ? '#28a745' : '#dc3545';
     
+    // Fetch items to compute flagged counts
+    let flaggedTx = 0, flaggedInv = 0;
+    try {
+      const itemsResp = await authenticatedFetch(`${BACKEND_URL}/api/items`);
+      if (itemsResp.ok) {
+        const itemsData = await itemsResp.json();
+        const items = itemsData.items || [];
+        items.forEach(it => {
+          const billed = it.billed_products || [];
+          const flagged = !!it.removal_flag;
+          if (flagged) {
+            if (billed.includes('transactions')) flaggedTx += 1;
+            if (billed.includes('investments')) flaggedInv += 1;
+          }
+        });
+      }
+    } catch (e) {
+      // ignore errors; counts remain 0
+    }
+
     const html = `
       <div class="card">
         <div class="card-header">
@@ -468,49 +488,118 @@ async function loadSubscriptionDetails() {
         <div class="card-header">
           <h3 class="card-title">Your Selected Bank Connections</h3>
         </div>
-        <div class="form-group">
-          <label for="transaction-tokens">Transaction-Based Bank Connections</label>
-          <input type="number" id="transaction-tokens" value="${data.selected_limits.transaction}" min="0" disabled>
-          <p class="text-muted">@ \$0.30/month each</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <h4 style="margin: 6px 0;">Current Month</h4>
+            <div class="form-group">
+              <label>Transaction-Based Bank Connections</label>
+              <input type="number" value="${data.selected_limits_current.transaction}" min="0" disabled>
+              <p class="text-muted">@ \$0.30/month each</p>
+            </div>
+            <div class="form-group">
+              <label>Investment-Based Bank Connections</label>
+              <input type="number" value="${data.selected_limits_current.investment}" min="0" disabled>
+              <p class="text-muted">@ \$0.18/month each</p>
+            </div>
+          </div>
+          <div>
+            <h4 style="margin: 6px 0;">Next Month</h4>
+            <div class="form-group">
+              <label>Transaction-Based Bank Connections</label>
+              <input type="number" value="${data.selected_limits_next.transaction}" min="0" disabled>
+              <p class="text-muted">@ \$0.30/month each</p>
+            </div>
+            <div class="form-group">
+              <label>Investment-Based Bank Connections</label>
+              <input type="number" value="${data.selected_limits_next.investment}" min="0" disabled>
+              <p class="text-muted">@ \$0.18/month each</p>
+            </div>
+          </div>
         </div>
-        <div class="form-group">
-          <label for="investment-tokens">Investment-Based Bank Connections</label>
-          <input type="number" id="investment-tokens" value="${data.selected_limits.investment}" min="0" disabled>
-          <p class="text-muted">@ \$0.18/month each</p>
+        <button class="btn btn-primary" onclick="editSubscriptionMode(${data.selected_limits_next.transaction}, ${data.selected_limits_next.investment})">Change for Next Month</button>
+      </div>
+
+      <div class="card" style="background: #fff5f5; border-color: #f5c2c7;">
+        <div class="card-header">
+          <h3 class="card-title">Flagged for Removal</h3>
         </div>
-        <button class="btn btn-primary" onclick="editSubscriptionMode(${data.selected_limits.transaction}, ${data.selected_limits.investment})">Change for Next Month</button>
+        <p class="text-muted" style="margin: 0;">These will be removed at renewal unless you unflag them.</p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 8px;">
+          <div style="background: #fdeaea; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 20px; font-weight: 600; color: #b71c1c;">${flaggedTx}</div>
+            <div style="color: #666; font-size: 12px;">Transaction Connections</div>
+          </div>
+          <div style="background: #fdeaea; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 20px; font-weight: 600; color: #b71c1c;">${flaggedInv}</div>
+            <div style="color: #666; font-size: 12px;">Investment Connections</div>
+          </div>
+        </div>
       </div>
 
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Monthly Pricing Breakdown</h3>
         </div>
-        <table style="width: 100%; font-size: 14px;">
-          <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 8px 0;">Plaid Transaction Fees (${data.selected_limits.transaction} × \$0.30)</td>
-            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.plaid_transaction_fee.toFixed(2)}</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 8px 0;">Plaid Investment Fees (${data.selected_limits.investment} × \$0.18)</td>
-            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.plaid_investment_fee.toFixed(2)}</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 8px 0;">Server Fee</td>
-            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.server_fee.toFixed(2)}</td>
-          </tr>
-          <tr style="border-bottom: 1px solid #e0e0e0;">
-            <td style="padding: 8px 0;">Stripe Processing Fee</td>
-            <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown.stripe_fee.toFixed(2)}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0;"><strong>App Fee</strong></td>
-            <td style="text-align: right; padding: 8px 0;"><strong>\$${data.pricing_breakdown.app_fee.toFixed(2)}</strong></td>
-          </tr>
-          <tr style="background: #f0f0f0; font-weight: 600; border-radius: 4px;">
-            <td style="padding: 12px 8px;"><strong>Total Monthly Cost</strong></td>
-            <td style="text-align: right; padding: 12px 8px;"><strong>\$${data.pricing_breakdown.total.toFixed(2)}</strong></td>
-          </tr>
-        </table>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <div>
+            <h4 style="margin: 6px 0;">Current Month</h4>
+            <table style="width: 100%; font-size: 14px;">
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Transaction Tokens (${data.selected_limits_current.transaction} × \$0.30)</td>
+                <td style="text-align: right; padding: 8px 0;">\$${(data.selected_limits_current.transaction * data.pricing_breakdown_current.plaid_transaction_fee).toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Investment Tokens (${data.selected_limits_current.investment} × \$0.18)</td>
+                <td style="text-align: right; padding: 8px 0;">\$${(data.selected_limits_current.investment * data.pricing_breakdown_current.plaid_investment_fee).toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Server Fee</td>
+                <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown_current.server_fee.toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Stripe Processing Fee</td>
+                <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown_current.stripe_fee.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0;"><strong>App Fee</strong></td>
+                <td style="text-align: right; padding: 8px 0;"><strong>\$${data.pricing_breakdown_current.app_fee.toFixed(2)}</strong></td>
+              </tr>
+              <tr style="background: #f0f0f0; font-weight: 600; border-radius: 4px;">
+                <td style="padding: 12px 8px;"><strong>Total Monthly Cost</strong></td>
+                <td style="text-align: right; padding: 12px 8px;"><strong>\$${data.pricing_breakdown_current.total.toFixed(2)}</strong></td>
+              </tr>
+            </table>
+          </div>
+          <div>
+            <h4 style="margin: 6px 0;">Next Month</h4>
+            <table style="width: 100%; font-size: 14px;">
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Transaction Tokens (${data.selected_limits_next.transaction} × \$0.30)</td>
+                <td style="text-align: right; padding: 8px 0;">\$${(data.selected_limits_next.transaction * data.pricing_breakdown_next.plaid_transaction_fee).toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Investment Tokens (${data.selected_limits_next.investment} × \$0.18)</td>
+                <td style="text-align: right; padding: 8px 0;">\$${(data.selected_limits_next.investment * data.pricing_breakdown_next.plaid_investment_fee).toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Server Fee</td>
+                <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown_next.server_fee.toFixed(2)}</td>
+              </tr>
+              <tr style="border-bottom: 1px solid #e0e0e0;">
+                <td style="padding: 8px 0;">Stripe Processing Fee</td>
+                <td style="text-align: right; padding: 8px 0;">\$${data.pricing_breakdown_next.stripe_fee.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0;"><strong>App Fee</strong></td>
+                <td style="text-align: right; padding: 8px 0;"><strong>\$${data.pricing_breakdown_next.app_fee.toFixed(2)}</strong></td>
+              </tr>
+              <tr style="background: #f0f0f0; font-weight: 600; border-radius: 4px;">
+                <td style="padding: 12px 8px;"><strong>Total Monthly Cost</strong></td>
+                <td style="text-align: right; padding: 12px 8px;"><strong>\$${data.pricing_breakdown_next.total.toFixed(2)}</strong></td>
+              </tr>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div class="card" style="background: #ffeaa7; border-color: #ffd93d;">
@@ -529,7 +618,7 @@ async function loadSubscriptionDetails() {
   }
 }
 
-function editSubscriptionMode(currentTx, currentInv) {
+function editSubscriptionMode(nextTx, nextInv) {
   const html = `
     <div class="card">
       <div class="card-header">
@@ -538,12 +627,12 @@ function editSubscriptionMode(currentTx, currentInv) {
       <form id="subscription-form">
         <div class="form-group">
           <label for="edit-transaction-tokens">Transaction-Based Bank Connections</label>
-          <input type="number" id="edit-transaction-tokens" value="${currentTx}" min="0" required>
+          <input type="number" id="edit-transaction-tokens" value="${nextTx}" min="0" required>
           <p class="text-muted">@ \$0.30/month each</p>
         </div>
         <div class="form-group">
           <label for="edit-investment-tokens">Investment-Based Bank Connections</label>
-          <input type="number" id="edit-investment-tokens" value="${currentInv}" min="0" required>
+          <input type="number" id="edit-investment-tokens" value="${nextInv}" min="0" required>
           <p class="text-muted">@ \$0.18/month each</p>
         </div>
         <div class="flex-group">
@@ -557,15 +646,45 @@ function editSubscriptionMode(currentTx, currentInv) {
 
   $('#subscription-content').html(html);
 
-  $('#subscription-form').on('submit', function(e) {
+  $('#subscription-form').on('submit', async function(e) {
     e.preventDefault();
-    calculateNewSubscriptionTotal();
+    await calculateNewSubscriptionTotal();
   });
 }
 
-function calculateNewSubscriptionTotal() {
+async function calculateNewSubscriptionTotal() {
   const transactionTokens = parseInt($('#edit-transaction-tokens').val()) || 0;
   const investmentTokens = parseInt($('#edit-investment-tokens').val()) || 0;
+
+  // Client-side minimum check based on active minus flagged items (advisory; backend enforces too)
+  try {
+    const resp = await authenticatedFetch(`${BACKEND_URL}/api/items`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const items = data.items || [];
+      let activeTx = 0, activeInv = 0, flaggedTx = 0, flaggedInv = 0;
+      items.forEach(it => {
+        const billed = it.billed_products || [];
+        const flagged = !!it.removal_flag;
+        if (billed.includes('transactions')) {
+          activeTx += 1;
+          if (flagged) flaggedTx += 1;
+        }
+        if (billed.includes('investments')) {
+          activeInv += 1;
+          if (flagged) flaggedInv += 1;
+        }
+      });
+      const minTx = Math.max(activeTx - flaggedTx, 0);
+      const minInv = Math.max(activeInv - flaggedInv, 0);
+      if (transactionTokens < minTx || investmentTokens < minInv) {
+        showMessage('subscription-edit-message', `Minimums based on current connections: Tx ≥ ${minTx}, Inv ≥ ${minInv}. Adjust your next-month limits.`, 'error');
+        return;
+      }
+    }
+  } catch (e) {
+    // If constraint fetch fails, proceed to show totals; backend will still enforce minimums.
+  }
 
   const transactionCost = transactionTokens * 0.30;
   const investmentCost = investmentTokens * 0.18;
@@ -632,7 +751,11 @@ async function confirmSubscriptionUpdate(transactionTokens, investmentTokens) {
       showMessage('subscription-edit-message', '✓ Subscription updated for next month!', 'success');
       setTimeout(() => loadSubscriptionDetails(), 1500);
     } else {
-      showMessage('subscription-edit-message', data.error || 'Failed to update subscription', 'error');
+      let msg = data.error || 'Failed to update subscription';
+      if (data.details) {
+        msg += ` (Min Tx: ${data.details.min_tx_required}, Min Inv: ${data.details.min_inv_required})`;
+      }
+      showMessage('subscription-edit-message', msg, 'error');
     }
   } catch (error) {
     console.error('Error updating subscription:', error);
