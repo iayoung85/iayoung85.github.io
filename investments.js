@@ -263,7 +263,7 @@ function renderTable() {
   const groupedHoldings = {}; // Key: ticker_symbol or name
   
   holdingsData.forEach(item => {
-    if (!item.holdings) return;
+    if (!item || !item.holdings || !item.securities) return;
     
     item.holdings.forEach(holding => {
       // Find security info
@@ -296,9 +296,8 @@ function renderTable() {
       // But sometimes it's per share? "The original total value...".
       // Actually, let's assume it's total cost for now.
       
-      // Find account name
-      const account = item.accounts.find(a => a.account_id === holding.account_id);
-      const accountName = account ? account.name : 'Unknown Account';
+      // Find account name (payload is per-account; fallback to embedded account)
+      const accountName = (item.account && item.account.name) || (item.account && item.account.official_name) || 'Unknown Account';
       
       groupedHoldings[key].holdings.push({
         bank: item.institution_name,
