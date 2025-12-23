@@ -24,33 +24,6 @@ $(document).ready(async function() {
   loadAccountStatus();
   loadHoldings();
   loadSettings();
-
-  // Connect Investment ONLY Bank
-  $('#connect-investment-only').on('click', async function() {
-    try {
-        const response = await authenticatedFetch(`${BACKEND_URL}/api/create_link_token?mode=investments_only`);
-        
-        if (response) {
-            const data = await response.json();
-            const handler = Plaid.create({
-                token: data.link_token,
-                onSuccess: async (public_token, metadata) => {
-                    // Plaid link succeeded
-                    await exchangePublicToken(public_token);
-                    // Reload to show new account
-                    location.reload();
-                },
-                onExit: (err, metadata) => {
-                    if (err) console.error('Plaid Link exit:', err);
-                },
-            });
-            handler.open();
-        }
-    } catch (error) {
-        console.error('Error starting Plaid Link:', error);
-        alert('Failed to start bank connection. Please try again.');
-    }
-  });
 });
 
 // --- API Calls ---

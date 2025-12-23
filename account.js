@@ -454,8 +454,9 @@ async function loadSubscriptionDetails() {
 
     const statusColor = data.status === 'active' ? '#28a745' : '#dc3545';
     
-    // Fetch items to compute flagged counts
+    // Fetch items to compute flagged counts and active connections
     let flaggedTx = 0, flaggedInv = 0;
+    let activeTx = 0, activeInv = 0;
     try {
       const itemsResp = await authenticatedFetch(`${BACKEND_URL}/api/items`);
       if (itemsResp.ok) {
@@ -464,15 +465,25 @@ async function loadSubscriptionDetails() {
         items.forEach(it => {
           const billed = it.billed_products || [];
           const flagged = !!it.removal_flag;
-          if (flagged) {
-            if (billed.includes('transactions')) flaggedTx += 1;
-            if (billed.includes('investments')) flaggedInv += 1;
+          if (billed.includes('transactions')) {
+            activeTx += 1;
+            if (flagged) flaggedTx += 1;
+          }
+          if (billed.includes('investments')) {
+            activeInv += 1;
+            if (flagged) flaggedInv += 1;
           }
         });
       }
     } catch (e) {
       // ignore errors; counts remain 0
     }
+    
+    // Calculate projected token renewal (accounting for flagged connections)
+    const unflaggedTx = Math.max(0, activeTx - flaggedTx);
+    const unflaggedInv = Math.max(0, activeInv - flaggedInv);
+    const projectedTxTokens = Math.max(0, data.selected_limits_next.transaction - unflaggedTx);
+    const projectedInvTokens = Math.max(0, data.selected_limits_next.investment - unflaggedInv);
 
     const html = `
       <div class="card">
@@ -532,6 +543,29 @@ async function loadSubscriptionDetails() {
           <div style="background: #fdeaea; padding: 12px; border-radius: 6px;">
             <div style="font-size: 20px; font-weight: 600; color: #b71c1c;">${flaggedInv}</div>
             <div style="color: #666; font-size: 12px;">Investment Connections</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="background: #f0f8ff; border-color: #b3d9ff;">
+        <div class="card-header">
+          <h3 class="card-title">Projected Token Renewal</h3>
+        </div>
+        <p class="text-muted" style="margin: 0;">Tokens you will receive at subscription renewal unless changes are made (${data.renewal_date})</p><p class="text-muted" style="margin: 0;">Adjusting subscription or flagging accounts will change these amounts.</p>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px;">
+          <div style="background: #e7f3ff; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 14px; color: #666; margin-bottom: 8px;">Transaction Tokens</div>
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <div style="font-size: 28px; font-weight: 600; color: #0066cc;">${projectedTxTokens}</div>
+              <div style="color: #999; font-size: 12px;">/ ${data.selected_limits_next.transaction} paid</div>
+            </div>
+          </div>
+          <div style="background: #e7f3ff; padding: 12px; border-radius: 6px;">
+            <div style="font-size: 14px; color: #666; margin-bottom: 8px;">Investment Tokens</div>
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <div style="font-size: 28px; font-weight: 600; color: #0066cc;">${projectedInvTokens}</div>
+              <div style="color: #999; font-size: 12px;">/ ${data.selected_limits_next.investment} paid</div>
+            </div>
           </div>
         </div>
       </div>

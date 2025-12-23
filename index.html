@@ -159,7 +159,13 @@
         <h2 style="margin-bottom: 4px;">Your Connected Banks</h2>
         <div id="connections-list">Loading connected banks...</div>
       </div>
-      <button id="link-button" class="btn btn-primary">Connect New Bank</button>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button id="link-button" class="btn btn-primary">Connect New Bank using <span style="color: #4caf50; font-weight: 600;">Transaction Token</span></button>
+        <button id="link-investment-button" class="btn btn-primary">Connect New Bank using <span style="color: #20c9e0; font-weight: 600;">Investment Token</span></button>
+      </div>
+      <p style="margin-top: 10px; font-size: 0.9em; color: #666;">
+        <strong>Note:</strong> Choose your initial connection type. After connecting, you can enable additional features (transactions for depository accounts or holdings for investments) from their respective views.
+      </p>
     </div>
   </div>
 

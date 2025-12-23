@@ -92,6 +92,9 @@ function showDashboard() {
     $('#link-button').prop('disabled', true);
     $('#link-button').css('opacity', '0.5');
     $('#link-button').css('cursor', 'not-allowed');
+    $('#link-investment-button').prop('disabled', true);
+    $('#link-investment-button').css('opacity', '0.5');
+    $('#link-investment-button').css('cursor', 'not-allowed');
     $('#unlink-button').prop('disabled', true);
     $('#unlink-button').css('opacity', '0.5');
     $('#unlink-button').css('cursor', 'not-allowed');
@@ -100,6 +103,9 @@ function showDashboard() {
     $('#link-button').prop('disabled', false);
     $('#link-button').css('opacity', '1');
     $('#link-button').css('cursor', 'pointer');
+    $('#link-investment-button').prop('disabled', false);
+    $('#link-investment-button').css('opacity', '1');
+    $('#link-investment-button').css('cursor', 'pointer');
     $('#unlink-button').prop('disabled', false);
     $('#unlink-button').css('opacity', '1');
     $('#unlink-button').css('cursor', 'pointer');
@@ -748,6 +754,72 @@ $('#link-button').on('click', async function() {
     
     handler.open();
 
+  } catch (error) {
+    showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+  }
+});
+
+// Connect Investment ONLY Bank button handler
+$('#link-investment-button').on('click', async function() {
+  if (!authToken) {
+    showMessage('dashboard-message', 'Please login first', 'error');
+    return;
+  }
+  
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/create_link_token?mode=investments_only`);
+    
+    if (response.ok) {
+      const data = await response.json();
+      const handler = Plaid.create({
+        token: data.link_token,
+        onSuccess: async (public_token, metadata) => {
+          try {
+            // Check for duplicate BEFORE exchanging the token
+            const institutionId = metadata.institution?.institution_id;
+            const institutionName = metadata.institution?.name;
+            
+            if (institutionId) {
+              const dupCheckResponse = await authenticatedFetch(`${BACKEND_URL}/api/check_duplicate_institution`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ institution_id: institutionId })
+              });
+              
+              const dupData = await dupCheckResponse.json();
+              
+              if (dupData.is_duplicate) {
+                showMessage('dashboard-message', 
+                  `${institutionName || 'This bank'} is already connected to your account. Please use the "Refresh" button to update the connection.`, 
+                  'error');
+                loadConnectedBanks();
+                return; // Exit without exchanging the token
+              }
+            }
+            
+            // Not a duplicate, proceed with exchange
+            await exchangePublicToken(public_token);
+            showMessage('dashboard-message', '✓ Bank connected successfully with investment access!', 'success');
+            loadConnectedBanks();
+          } catch (error) {
+            showMessage('dashboard-message', 'Error: ' + error.message, 'error');
+          }
+        },
+        onLoad: () => { /* Link is ready */ },
+        onExit: (err, metadata) => {
+          if (err != null) {
+            console.error('Plaid Link Error:', err);
+            showMessage('dashboard-message', 'Connection cancelled or failed', 'error');
+          }
+        },
+        onEvent: (eventName, metadata) => {
+          // Log events for debugging if needed
+          console.log('Plaid Event:', eventName, metadata);
+        }
+      });
+      
+      handler.open();
+    }
   } catch (error) {
     showMessage('dashboard-message', 'Error: ' + error.message, 'error');
   }
