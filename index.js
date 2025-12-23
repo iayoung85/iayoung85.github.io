@@ -82,9 +82,8 @@ function showDashboard() {
   
   // Load connected banks
   loadConnectedBanks();
-  
-  // Update 2FA UI
-  update2FAUI();
+  // Load token balances (transaction & investment)
+  loadTokenBalances();
   
   // Check approval status
   if (currentUser.approved === false) {
@@ -133,6 +132,25 @@ function showTwoFactorLogin() {
   $('#two-factor-view').removeClass('hidden');
   clearMessages();
   $('#two-factor-code').focus();
+}
+
+async function loadTokenBalances() {
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/subscription-status`);
+    const data = await response.json();
+    if (!response.ok) {
+      $('#token-tx-count').text('–');
+      $('#token-inv-count').text('–');
+      return;
+    }
+    const tx = data.current_tokens ? data.current_tokens.transaction : null;
+    const inv = data.current_tokens ? data.current_tokens.investment : null;
+    $('#token-tx-count').text(typeof tx === 'number' ? tx : '0');
+    $('#token-inv-count').text(typeof inv === 'number' ? inv : '0');
+  } catch (error) {
+    $('#token-tx-count').text('–');
+    $('#token-inv-count').text('–');
+  }
 }
 
 async function loadConnectedBanks() {
@@ -735,6 +753,7 @@ $('#link-button').on('click', async function() {
           await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
           loadConnectedBanks();
+          loadTokenBalances();
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }
@@ -801,6 +820,7 @@ $('#link-investment-button').on('click', async function() {
             await exchangePublicToken(public_token);
             showMessage('dashboard-message', '✓ Bank connected successfully with investment access!', 'success');
             loadConnectedBanks();
+            loadTokenBalances();
           } catch (error) {
             showMessage('dashboard-message', 'Error: ' + error.message, 'error');
           }
@@ -1120,6 +1140,7 @@ async function closeSwapModalAndDisconnect(itemId) {
         try {
           await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
+          loadTokenBalances();
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }
@@ -1135,94 +1156,3 @@ async function closeSwapModalAndDisconnect(itemId) {
     console.error('Error handling OAuth redirect:', err);
   }
 })();
-
-// 2FA Setup Functions
-function update2FAUI() {
-  if (currentUser && currentUser.is_2fa_enabled) {
-    $('#2fa-status-text').text('Enabled').css('color', '#28a745');
-    $('#enable-2fa-btn').addClass('hidden');
-    $('#disable-2fa-btn').removeClass('hidden');
-  } else {
-    $('#2fa-status-text').text('Disabled').css('color', '#666');
-    $('#enable-2fa-btn').removeClass('hidden');
-    $('#disable-2fa-btn').addClass('hidden');
-  }
-  $('#2fa-setup-area').addClass('hidden');
-}
-
-async function start2FASetup() {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/setup_2fa`, {
-      method: 'POST'
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      $('#2fa-setup-area').removeClass('hidden');
-      $('#qr-code-container').html(`<img src="data:image/png;base64,${data.qr_code}" alt="2FA QR Code" style="max-width: 200px; border: 1px solid #ddd; padding: 10px;">`);
-      $('#secret-key-display').text(data.secret);
-      $('#setup-2fa-message').html('');
-      $('#setup-2fa-code').val('').focus();
-    } else {
-      alert('Failed to start 2FA setup: ' + (data.error || 'Unknown error'));
-    }
-  } catch (error) {
-    alert('Connection error: ' + error.message);
-  }
-}
-
-function cancel2FASetup() {
-  $('#2fa-setup-area').addClass('hidden');
-  $('#setup-2fa-message').html('');
-}
-
-$('#verify-2fa-setup-form').on('submit', async function(e) {
-  e.preventDefault();
-  const code = $('#setup-2fa-code').val();
-  
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/verify_2fa_setup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code })
-    });
-    
-    const data = await response.json();
-    
-    if (response.ok) {
-      currentUser.is_2fa_enabled = true;
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      update2FAUI();
-      alert('Two-Factor Authentication has been enabled successfully!');
-    } else {
-      $('#setup-2fa-message').html(`<div class="message error">${data.error || 'Verification failed'}</div>`);
-    }
-  } catch (error) {
-    $('#setup-2fa-message').html(`<div class="message error">Connection error: ${error.message}</div>`);
-  }
-});
-
-async function disable2FA() {
-  if (!confirm('Are you sure you want to disable Two-Factor Authentication? This will make your account less secure.')) {
-    return;
-  }
-  
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/disable_2fa`, {
-      method: 'POST'
-    });
-    
-    if (response.ok) {
-      currentUser.is_2fa_enabled = false;
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
-      update2FAUI();
-      alert('Two-Factor Authentication has been disabled.');
-    } else {
-      const data = await response.json();
-      alert('Failed to disable 2FA: ' + (data.error || 'Unknown error'));
-    }
-  } catch (error) {
-    alert('Connection error: ' + error.message);
-  }
-}
