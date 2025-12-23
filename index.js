@@ -697,33 +697,65 @@ $('#link-button').on('click', async function() {
   }
   
   try {
-    // Always add new bank - use the green refresh button to update existing banks
     const linkToken = await fetchLinkToken(null);
-    const handler = Plaid.create({
+    
+    // Define handler variable in this scope so it's accessible inside onEvent
+    let handler; 
+
+    handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
         try {
-          // New connection - exchange token
           await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
-          // Refresh connected banks list
           loadConnectedBanks();
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }
       },
-      onLoad: () => {
-        // Link is ready
-      },
+      onLoad: () => { /* Link is ready */ },
       onExit: (err, metadata) => {
         if (err != null) {
           console.error('Plaid Link Error:', err);
           showMessage('dashboard-message', 'Connection cancelled or failed', 'error');
         }
       },
-      onEvent: (eventName, metadata) => {}
+      onEvent: async (eventName, metadata) => {
+        // --- INJECTED DUPLICATE CHECK ---
+        if (eventName === 'SELECT_INSTITUTION') {
+          const institutionId = metadata.institution_id;
+          const institutionName = metadata.institution_name;
+
+          try {
+            // Use your existing authenticated helper
+            const response = await authenticatedFetch('/api/check_duplicate_institution', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ institution_id: institutionId })
+            });
+            
+            const data = await response.json();
+
+            if (data.is_duplicate) {
+              // Force exit to prevent the user from finishing the login
+              if (handler) {
+                handler.exit(); 
+              }
+
+              alert(`Notice: ${institutionName} is already linked to your account. \n\nPlease use the 'Refresh' option if you need to update this connection.`);
+              
+              showMessage('dashboard-message', 'Duplicate bank selection cancelled.', 'error');
+            }
+          } catch (err) {
+            // Log the error but don't break the user's flow if the check fails
+            console.error("Duplicate check failed:", err);
+          }
+        }
+      }
     });
+    
     handler.open();
+
   } catch (error) {
     showMessage('dashboard-message', 'Error: ' + error.message, 'error');
   }
