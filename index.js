@@ -626,7 +626,7 @@ $('#register-form').on('submit', async function(e) {
 // Test connection button
 $('#test-connection').on('click', async function() {
   try {
-    const response = await fetch(`${BACKEND_URL}/health`);
+    const response = await fetch(`${BACKEND_URL}/api/health`);
     const data = await response.json();
     
     if (data.status === 'ok') {
@@ -698,14 +698,34 @@ $('#link-button').on('click', async function() {
   
   try {
     const linkToken = await fetchLinkToken(null);
-    
-    // Define handler variable in this scope so it's accessible inside onEvent
-    let handler; 
 
-    handler = Plaid.create({
+    const handler = Plaid.create({
       token: linkToken,
       onSuccess: async (public_token, metadata) => {
         try {
+          // Check for duplicate BEFORE exchanging the token
+          const institutionId = metadata.institution?.institution_id;
+          const institutionName = metadata.institution?.name;
+          
+          if (institutionId) {
+            const dupCheckResponse = await authenticatedFetch(`${BACKEND_URL}/api/check_duplicate_institution`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ institution_id: institutionId })
+            });
+            
+            const dupData = await dupCheckResponse.json();
+            
+            if (dupData.is_duplicate) {
+              showMessage('dashboard-message', 
+                `${institutionName || 'This bank'} is already connected to your account. Please use the "Refresh" button to update the connection.`, 
+                'error');
+              loadConnectedBanks();
+              return; // Exit without exchanging the token
+            }
+          }
+          
+          // Not a duplicate, proceed with normal flow
           await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
           loadConnectedBanks();
@@ -720,37 +740,9 @@ $('#link-button').on('click', async function() {
           showMessage('dashboard-message', 'Connection cancelled or failed', 'error');
         }
       },
-      onEvent: async (eventName, metadata) => {
-        // --- INJECTED DUPLICATE CHECK ---
-        if (eventName === 'SELECT_INSTITUTION') {
-          const institutionId = metadata.institution_id;
-          const institutionName = metadata.institution_name;
-
-          try {
-            // Use your existing authenticated helper
-            const response = await authenticatedFetch('/api/check_duplicate_institution', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ institution_id: institutionId })
-            });
-            
-            const data = await response.json();
-
-            if (data.is_duplicate) {
-              // Force exit to prevent the user from finishing the login
-              if (handler) {
-                handler.exit(); 
-              }
-
-              alert(`Notice: ${institutionName} is already linked to your account. \n\nPlease use the 'Refresh' option if you need to update this connection.`);
-              
-              showMessage('dashboard-message', 'Duplicate bank selection cancelled.', 'error');
-            }
-          } catch (err) {
-            // Log the error but don't break the user's flow if the check fails
-            console.error("Duplicate check failed:", err);
-          }
-        }
+      onEvent: (eventName, metadata) => {
+        // Log events for debugging if needed
+        console.log('Plaid Event:', eventName, metadata);
       }
     });
     
@@ -829,7 +821,7 @@ async function disconnectBank(itemId, bankName) {
   }
   
   // Confirm before disconnecting
-  if (!confirm(`⚠️ WARNING: Disconnect ${bankName}?\n\nIf you're having connection issues or need to update your credentials, use "Connect New Bank" instead and select this bank to reconnect.\n\nDisconnecting and then reconnecting as a NEW bank will incur additional Plaid fees.\n\nAre you sure you want to permanently disconnect ${bankName}?`)) {
+  if (!confirm(`⚠️ WARNING: Disconnect ${bankName}?\n\nIf you're having connection issues or need to update your credentials, click the refresh button for the chosen bank to reconnect.\n\nDisconnecting and then reconnecting as a NEW bank will consume either a swap token if available or a transaction and/or investment token.\n\nAre you sure you want to permanently disconnect ${bankName}?`)) {
     return;
   }
   

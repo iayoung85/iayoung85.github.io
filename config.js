@@ -22,7 +22,7 @@ function detectBackendUrl() {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
         
-        fetch(`${url}/health`, { signal: controller.signal }).then(r => {
+        fetch(`${url}/api/health`, { signal: controller.signal }).then(r => {
           clearTimeout(timeoutId);
           if (r.ok) {
             resolve(url);
