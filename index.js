@@ -85,34 +85,28 @@ function showDashboard() {
   // Load token balances (transaction & investment)
   loadTokenBalances();
   
-  // Check approval status
-  if (currentUser.approved === false) {
-    $('#approval-message').show();
-    $('#link-button').prop('disabled', true);
-    $('#link-button').css('opacity', '0.5');
-    $('#link-button').css('cursor', 'not-allowed');
-    $('#link-investment-button').prop('disabled', true);
-    $('#link-investment-button').css('opacity', '0.5');
-    $('#link-investment-button').css('cursor', 'not-allowed');
-    $('#unlink-button').prop('disabled', true);
-    $('#unlink-button').css('opacity', '0.5');
-    $('#unlink-button').css('cursor', 'not-allowed');
-  } else {
-    $('#approval-message').hide();
-    $('#link-button').prop('disabled', false);
-    $('#link-button').css('opacity', '1');
-    $('#link-button').css('cursor', 'pointer');
-    $('#link-investment-button').prop('disabled', false);
-    $('#link-investment-button').css('opacity', '1');
-    $('#link-investment-button').css('cursor', 'pointer');
-    $('#unlink-button').prop('disabled', false);
-    $('#unlink-button').css('opacity', '1');
-    $('#unlink-button').css('cursor', 'pointer');
-  }
+  // Apply approval-related UI state
+  updateApprovalUI();
   
   // Setup security features for logged-in users
   setupActivityListeners();
   resetIdleTimeout();
+}
+
+// Update UI controls based on `currentUser.approved`
+function updateApprovalUI() {
+  if (!currentUser) return;
+  if (currentUser.approved === false) {
+    $('#approval-message').show();
+    $('#link-button').prop('disabled', true).css({ opacity: '0.5', cursor: 'not-allowed' });
+    $('#link-investment-button').prop('disabled', true).css({ opacity: '0.5', cursor: 'not-allowed' });
+    $('#unlink-button').prop('disabled', true).css({ opacity: '0.5', cursor: 'not-allowed' });
+  } else {
+    $('#approval-message').hide();
+    $('#link-button').prop('disabled', false).css({ opacity: '1', cursor: 'pointer' });
+    $('#link-investment-button').prop('disabled', false).css({ opacity: '1', cursor: 'pointer' });
+    $('#unlink-button').prop('disabled', false).css({ opacity: '1', cursor: 'pointer' });
+  }
 }
 
 function showForgotPassword() {
@@ -147,6 +141,15 @@ async function loadTokenBalances() {
     const inv = data.current_tokens ? data.current_tokens.investment : null;
     $('#token-tx-count').text(typeof tx === 'number' ? tx : '0');
     $('#token-inv-count').text(typeof inv === 'number' ? inv : '0');
+
+    // If backend reports approval changed, update local storage and UI
+    if (typeof data.approved === 'boolean' && currentUser) {
+      if (currentUser.approved !== data.approved) {
+        currentUser.approved = data.approved;
+        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        updateApprovalUI();
+      }
+    }
   } catch (error) {
     $('#token-tx-count').text('–');
     $('#token-inv-count').text('–');
@@ -605,13 +608,6 @@ $('#register-form').on('submit', async function(e) {
   const lastName = $('#register-lastname').val();
   const email = $('#register-email').val();
   const password = $('#register-password').val();
-  
-  // Check password strength
-  const strength = zxcvbn(password);
-  if (strength.score < 3) {
-    showMessage('register-message', 'Password is too weak. Please make it stronger.', 'error');
-    return;
-  }
   
   try {
     // Get current base URL (e.g., http://localhost:5501/iayoung85.github.io or https://bank.isaacyoung.com)

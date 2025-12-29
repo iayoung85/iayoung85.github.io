@@ -456,7 +456,7 @@ async function loadSubscriptionDetails() {
     }
 
     const statusColor = data.status === 'active' ? '#28a745' : '#dc3545';
-    
+
     // Fetch items to compute flagged counts and active connections
     let flaggedTx = 0, flaggedInv = 0;
     let activeTx = 0, activeInv = 0;
@@ -496,7 +496,23 @@ async function loadSubscriptionDetails() {
         <p><strong>Status:</strong> <span style="color: ${statusColor}; text-transform: capitalize;">${data.status}</span></p>
         <p><strong>Renewal Date:</strong> ${data.renewal_date}</p>
         <p><strong>Billing Period:</strong> ${data.billing_month_start} to ${data.billing_month_end}</p>
+        <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+          ${(!data.status || data.status === 'unsubscribed') ? `
+            <button class="btn btn-primary" onclick="startSubscribeFlow()">Subscribe Now</button>
+          ` : ''}
+          ${(data.status === 'active') ? `
+            <button class="btn btn-danger" onclick="cancelSubscription()">Unsubscribe</button>
+          ` : ''}
+          ${(data.status === 'first_month') ? `
+            <button class="btn btn-danger" onclick="cancelSubscription()">Unsubscribe</button>
+          ` : ''}
+          ${(data.status === 'ending') ? `
+            <button class="btn btn-success" onclick="keepSubscription()">Keep Subscription</button>
+          ` : ''}
+        </div>
       </div>
+
+      <div id="subscription-message"></div>
 
       <div class="card">
         <div class="card-header">
@@ -530,7 +546,11 @@ async function loadSubscriptionDetails() {
             </div>
           </div>
         </div>
-        <button class="btn btn-primary" onclick="editSubscriptionMode(${data.selected_limits_next.transaction}, ${data.selected_limits_next.investment})">Change for Next Month</button>
+        ${(data.status === 'ending') ? '' : (data.status === 'first_month' ? `
+          <button class="btn btn-primary" disabled title="Changes disabled during first month">Change for Next Month</button>
+        ` : `
+          <button class="btn btn-primary" onclick="editSubscriptionMode(${data.selected_limits_next.transaction}, ${data.selected_limits_next.investment})">Change for Next Month</button>
+        `)}
       </div>
 
       <div class="card" style="background: #fff5f5; border-color: #f5c2c7;">
@@ -639,19 +659,195 @@ async function loadSubscriptionDetails() {
         </div>
       </div>
 
-      <div class="card" style="background: #ffeaa7; border-color: #ffd93d;">
-        <p class="text-muted" style="color: #d68f00; margin: 0;">
-          <strong>Note:</strong> Subscriptions cannot be cancelled. To stop all charges, you must delete your account. However, you can adjust the number of bank connections you pay for each month.
-        </p>
-      </div>
-
-      <div id="subscription-message"></div>
+      ${(data.status === 'ending') ? `
+        <div class="card" style="background: #fff5f5; border-color: #f5c2c7;">
+          <p class="text-muted" style="color: #b71c1c; margin: 0;">
+            <strong>Notice:</strong> Your subscription is set to end at renewal. You can delete connections now or click "Keep Subscription" to restore your previous flag configuration.
+          </p>
+        </div>
+      ` : ''}
     `;
 
     container.html(html);
   } catch (error) {
     console.error('Error loading subscription:', error);
     container.html(`<div class="message error">Connection error: ${error.message}</div>`);
+  }
+}
+// ============================================
+// SUBSCRIBE FLOW (Stripe Elements)
+// ============================================
+
+let _stripeInstance = null;
+let _stripeCardElement = null;
+
+async function getStripe() {
+  if (_stripeInstance) return _stripeInstance;
+  const resp = await authenticatedFetch(`${BACKEND_URL}/api/stripe-publishable-key`);
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || 'Failed to get Stripe key');
+  _stripeInstance = Stripe(data.publishable_key);
+  return _stripeInstance;
+}
+
+async function startSubscribeFlow() {
+  const container = $('#subscription-content');
+  // Fetch pricing for display defaults
+  let pricing = { transaction_token_price: 0.30, investment_token_price: 0.18, app_fee: 0.50, server_fee: 0.50, stripe_fee: 0.30 };
+  try {
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/subscription-pricing`);
+    const j = await r.json();
+    if (r.ok) pricing = j;
+  } catch {}
+
+  const html = `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Subscribe</h3>
+        <p>Your first payment covers current + next full month.</p>
+      </div>
+      <form id="subscribe-form">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+          <div>
+            <h4>Current Month</h4>
+            <div class="form-group">
+              <label>Transaction Connections</label>
+              <input type="number" id="sub-tx-current" value="1" min="0" required>
+              <p class="text-muted">@ \$${pricing.transaction_token_price.toFixed(2)} each</p>
+            </div>
+            <div class="form-group">
+              <label>Investment Connections</label>
+              <input type="number" id="sub-inv-current" value="1" min="0" required>
+              <p class="text-muted">@ \$${pricing.investment_token_price.toFixed(2)} each</p>
+            </div>
+          </div>
+          <div>
+            <h4>Next Month</h4>
+            <div class="form-group">
+              <label>Transaction Connections</label>
+              <input type="number" id="sub-tx-next" value="1" min="0" required>
+            </div>
+            <div class="form-group">
+              <label>Investment Connections</label>
+              <input type="number" id="sub-inv-next" value="1" min="0" required>
+            </div>
+          </div>
+        </div>
+        <div id="card-element" style="padding:12px;border:1px solid #ddd;border-radius:6px;margin-top:12px;"></div>
+        <div id="subscribe-summary" class="text-muted" style="margin-top:8px;"></div>
+        <div class="flex-group" style="margin-top:12px;">
+          <button type="submit" class="btn btn-primary">Pay and Subscribe</button>
+          <button type="button" class="btn btn-secondary" onclick="loadSubscriptionDetails()">Cancel</button>
+        </div>
+      </form>
+      <div id="subscribe-message"></div>
+    </div>
+  `;
+
+  container.html(html);
+
+  // Initialize Stripe Elements
+  try {
+    const stripe = await getStripe();
+    const elements = stripe.elements();
+    _stripeCardElement = elements.create('card');
+    _stripeCardElement.mount('#card-element');
+  } catch (e) {
+    showMessage('subscribe-message', `Stripe init failed: ${e.message}`, 'error');
+  }
+
+  function updateSummary() {
+    const txc = parseInt($('#sub-tx-current').val()) || 0;
+    const inc = parseInt($('#sub-inv-current').val()) || 0;
+    const txn = parseInt($('#sub-tx-next').val()) || txc;
+    const inn = parseInt($('#sub-inv-next').val()) || inc;
+    const current = txc * pricing.transaction_token_price + inc * pricing.investment_token_price + pricing.server_fee + pricing.stripe_fee + pricing.app_fee;
+    const next = txn * pricing.transaction_token_price + inn * pricing.investment_token_price;
+    $('#subscribe-summary').text(`Charge now: $${(current+next).toFixed(2)} (Current: $${current.toFixed(2)}, Next: $${next.toFixed(2)})`);
+  }
+  $('#sub-tx-current, #sub-inv-current, #sub-tx-next, #sub-inv-next').on('input', updateSummary);
+  updateSummary();
+
+  $('#subscribe-form').on('submit', async function(e) {
+    e.preventDefault();
+    await processSubscription();
+  });
+}
+
+async function processSubscription() {
+  try {
+    const txc = parseInt($('#sub-tx-current').val()) || 0;
+    const inc = parseInt($('#sub-inv-current').val()) || 0;
+    const txn = parseInt($('#sub-tx-next').val()) || txc;
+    const inn = parseInt($('#sub-inv-next').val()) || inc;
+
+    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/stripe/create-subscription-session`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
+    });
+    const sessionData = await sessionResp.json();
+    if (!sessionResp.ok) {
+      showMessage('subscribe-message', sessionData.error || 'Failed to start subscription', 'error');
+      return;
+    }
+
+    const stripe = await getStripe();
+    const confirmResult = await stripe.confirmCardPayment(sessionData.client_secret, {
+      payment_method: { card: _stripeCardElement }
+    });
+    if (confirmResult.error) {
+      showMessage('subscribe-message', confirmResult.error.message || 'Payment failed', 'error');
+      return;
+    }
+
+    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/stripe/confirm-subscription`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_intent_id: sessionData.payment_intent_id, tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
+    });
+    const finalizeData = await finalizeResp.json();
+    if (!finalizeResp.ok) {
+      showMessage('subscribe-message', finalizeData.error || 'Failed to finalize subscription', 'error');
+      return;
+    }
+    await loadSubscriptionDetails();
+    showMessage('subscribe-message', '✓ Subscription confirmed!', 'success');
+  } catch (e) {
+    console.error('Subscription error:', e);
+    showMessage('subscribe-message', `Error: ${e.message}`, 'error');
+  }
+}
+
+async function cancelSubscription() {
+  try {
+    const r = await authenticatedFetch(`${BACKEND_URL}/stripe/cancel-subscription`, { method: 'POST' });
+    const j = await r.json();
+    if (r.ok) {
+      await loadSubscriptionDetails();
+      showMessage('subscription-message', 'Subscription will end at renewal; flags saved.', 'success');
+    } else {
+      showMessage('subscription-message', j.error || 'Failed to cancel', 'error');
+    }
+  } catch (e) {
+    showMessage('subscription-message', `Error: ${e.message}`, 'error');
+  }
+}
+
+async function keepSubscription() {
+  try {
+    const r = await authenticatedFetch(`${BACKEND_URL}/stripe/keep-subscription`, { method: 'POST' });
+    const j = await r.json();
+    if (r.ok) {
+      await loadSubscriptionDetails();
+      if (j.status === 'first_month') {
+        showMessage('subscription-message', 'Subscription kept; you are still in your first month. Billing will continue as scheduled.', 'success');
+      } else {
+        showMessage('subscription-message', 'Subscription kept; flags restored.', 'success');
+      }
+    } else {
+      showMessage('subscription-message', j.error || 'Failed to keep subscription', 'error');
+    }
+  } catch (e) {
+    showMessage('subscription-message', `Error: ${e.message}`, 'error');
   }
 }
 
