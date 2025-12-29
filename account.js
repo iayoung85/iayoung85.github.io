@@ -781,7 +781,7 @@ async function processSubscription() {
     const txn = parseInt($('#sub-tx-next').val()) || txc;
     const inn = parseInt($('#sub-inv-next').val()) || inc;
 
-    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/stripe/create-subscription-session`, {
+    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/api/stripe/create-subscription-session`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
     });
@@ -800,7 +800,7 @@ async function processSubscription() {
       return;
     }
 
-    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/stripe/confirm-subscription`, {
+    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/api/stripe/confirm-subscription`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payment_intent_id: sessionData.payment_intent_id, tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
     });
@@ -819,7 +819,7 @@ async function processSubscription() {
 
 async function cancelSubscription() {
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/stripe/cancel-subscription`, { method: 'POST' });
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/stripe/cancel-subscription`, { method: 'POST' });
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
@@ -834,7 +834,7 @@ async function cancelSubscription() {
 
 async function keepSubscription() {
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/stripe/keep-subscription`, { method: 'POST' });
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/stripe/keep-subscription`, { method: 'POST' });
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
