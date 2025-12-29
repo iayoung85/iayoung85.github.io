@@ -456,6 +456,28 @@ async function loadSubscriptionDetails() {
     }
 
     const statusColor = data.status === 'active' ? '#28a745' : '#dc3545';
+    const isEnding = data.status === 'ending';
+
+    // Compute local display for deletion time when ending
+    let deletionLocalText = '';
+    let userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    if (isEnding) {
+      try {
+        const endDate = new Date(data.billing_month_end);
+        if (isNaN(endDate)) throw new Error('Invalid end date');
+        const y = endDate.getUTCFullYear();
+        const m = endDate.getUTCMonth();
+        const d = endDate.getUTCDate();
+        const deletionUTC = new Date(Date.UTC(y, m, d, 23, 30, 0)); // 23:30 UTC on last day
+        deletionLocalText = deletionUTC.toLocaleString(undefined, {
+          year: 'numeric', month: 'short', day: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+          timeZone: userTimeZone, timeZoneName: 'short'
+        });
+      } catch (e) {
+        deletionLocalText = 'Unavailable';
+      }
+    }
 
     // Fetch items to compute flagged counts and active connections
     let flaggedTx = 0, flaggedInv = 0;
@@ -494,7 +516,7 @@ async function loadSubscriptionDetails() {
           <h3 class="card-title">Current Subscription Status</h3>
         </div>
         <p><strong>Status:</strong> <span style="color: ${statusColor}; text-transform: capitalize;">${data.status}</span></p>
-        <p><strong>Renewal Date:</strong> ${data.renewal_date}</p>
+        ${isEnding ? '' : `<p><strong>Renewal Date:</strong> ${data.renewal_date}</p>`}
         <p><strong>Billing Period:</strong> ${data.billing_month_start} to ${data.billing_month_end}</p>
         <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
           ${(!data.status || data.status === 'unsubscribed') ? `
@@ -514,6 +536,7 @@ async function loadSubscriptionDetails() {
 
       <div id="subscription-message"></div>
 
+      ${isEnding ? '' : `
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Your Selected Bank Connections</h3>
@@ -546,13 +569,15 @@ async function loadSubscriptionDetails() {
             </div>
           </div>
         </div>
-        ${(data.status === 'ending') ? '' : (data.status === 'first_month' ? `
+        ${(data.status === 'first_month') ? `
           <button class="btn btn-primary" disabled title="Changes disabled during first month">Change for Next Month</button>
         ` : `
           <button class="btn btn-primary" onclick="editSubscriptionMode(${data.selected_limits_next.transaction}, ${data.selected_limits_next.investment})">Change for Next Month</button>
-        `)}
+        `}
       </div>
+      `}
 
+      ${isEnding ? '' : `
       <div class="card" style="background: #fff5f5; border-color: #f5c2c7;">
         <div class="card-header">
           <h3 class="card-title">Flagged for Removal</h3>
@@ -569,12 +594,15 @@ async function loadSubscriptionDetails() {
           </div>
         </div>
       </div>
+      `}
 
+      ${isEnding ? '' : `
       <div class="card" style="background: #f0f8ff; border-color: #b3d9ff;">
         <div class="card-header">
           <h3 class="card-title">Projected Token Renewal</h3>
         </div>
-        <p class="text-muted" style="margin: 0;">Tokens you will receive at subscription renewal unless changes are made (${data.renewal_date})</p><p class="text-muted" style="margin: 0;">Adjusting subscription or flagging accounts will change these amounts.</p>
+        <p class="text-muted" style="margin: 0;">Tokens you will receive at subscription renewal unless changes are made (${data.renewal_date})</p>
+        <p class="text-muted" style="margin: 0;">Adjusting subscription or flagging accounts will change these amounts.</p>
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px;">
           <div style="background: #e7f3ff; padding: 12px; border-radius: 6px;">
             <div style="font-size: 14px; color: #666; margin-bottom: 8px;">Transaction Tokens</div>
@@ -592,12 +620,13 @@ async function loadSubscriptionDetails() {
           </div>
         </div>
       </div>
+      `}
 
       <div class="card">
         <div class="card-header">
           <h3 class="card-title">Monthly Pricing Breakdown</h3>
         </div>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div style="display: grid; grid-template-columns: ${isEnding ? '1fr' : '1fr 1fr'}; gap: 16px;">
           <div>
             <h4 style="margin: 6px 0;">Current Month</h4>
             <table style="width: 100%; font-size: 14px;">
@@ -627,6 +656,7 @@ async function loadSubscriptionDetails() {
               </tr>
             </table>
           </div>
+          ${isEnding ? '' : `
           <div>
             <h4 style="margin: 6px 0;">Next Month</h4>
             <table style="width: 100%; font-size: 14px;">
@@ -656,14 +686,25 @@ async function loadSubscriptionDetails() {
               </tr>
             </table>
           </div>
+          `}
         </div>
       </div>
 
       ${(data.status === 'ending') ? `
         <div class="card" style="background: #fff5f5; border-color: #f5c2c7;">
+          <div class="card-header">
+            <h3 class="card-title">Subscription Ending</h3>
+          </div>
           <p class="text-muted" style="color: #b71c1c; margin: 0;">
-            <strong>Notice:</strong> Your subscription is set to end at renewal. You can delete connections now or click "Keep Subscription" to restore your previous flag configuration.
+            <strong>You will not be billed again.</strong> You will retain access to your connected accounts and may connect new accounts if you have available tokens.
           </p>
+          <p class="text-muted" style="color: #b71c1c; margin: 6px 0 0 0;">
+            <strong>Data deletion schedule:</strong> All bank connections and all transaction/investment data will be deleted at <strong>23:30 UTC</strong> on the last day of your current billing period.
+          </p>
+          <p class="text-muted" style="color: #b71c1c; margin: 6px 0 0 0;">
+            Local time: <strong>${deletionLocalText}</strong> (Time zone: <strong>${userTimeZone}</strong>). UTC reference: <strong>23:30</strong>.
+          </p>
+          <p class="text-muted" style="margin: 6px 0 0 0;">You can delete connections now or click "Keep Subscription" to continue service before the end of the period.</p>
         </div>
       ` : ''}
     `;
@@ -823,7 +864,7 @@ async function cancelSubscription() {
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
-      showMessage('subscription-message', 'Subscription will end at renewal; flags saved.', 'success');
+      showMessage('subscription-message', 'Subscription will end at the end of billing period.', 'success');
     } else {
       showMessage('subscription-message', j.error || 'Failed to cancel', 'error');
     }

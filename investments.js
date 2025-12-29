@@ -203,7 +203,7 @@ function renderAccountStatus() {
   accountStatus.forEach(item => {
     let actionHtml = '';
     let statusClass = 'status-inactive';
-    let statusText = 'Not Supported';
+    let statusText = 'No Investment Accounts. If you believe there is an investment account associated with this bank, please try refreshing the connection from the dashboard and be sure to select the investment accounts to authorize sharing.';
     
     if (item.status === 'active') {
       statusClass = 'status-active';
