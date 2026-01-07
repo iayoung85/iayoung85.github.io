@@ -23,7 +23,7 @@ async function refreshAccessToken() {
   }
   
   try {
-    const response = await fetch(`${BACKEND_URL}/api/refresh`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })
@@ -237,7 +237,7 @@ function toggleConfig() {
 async function refreshAccounts() {
   try {
     showStatus('Syncing accounts from Plaid...', 'info');
-    const response = await fetch(`${BACKEND_URL}/api/accounts`, {
+    const response = await fetch(`${BACKEND_URL}/api/connections/accounts`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -287,7 +287,7 @@ async function loadAccounts() {
     showStatus('Loading accounts...', 'info');
     
     // Use new endpoint that gets all accounts including disconnected ones
-    const url = `${BACKEND_URL}/api/accounts/all?t=${Date.now()}`;
+    const url = `${BACKEND_URL}/api/connections/accounts/all?t=${Date.now()}`;
     const response = await authenticatedFetch(url, {
       method: 'GET',
       mode: 'cors',
@@ -442,7 +442,7 @@ function toggleBank(institution) {
 }
 
 async function performSync(accountIds, startDate, endDate, activate = false) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/sync_transactions`, {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/sync_transactions`, {
     method: 'POST',
     mode: 'cors',
     headers: {
@@ -524,7 +524,7 @@ async function loadTransactions() {
       params.append('account_ids[]', id);
     });
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions?${params}`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transactions?${params}`, {
       method: 'GET',
       mode: 'cors'
     });
@@ -780,7 +780,7 @@ async function promptRename(accountId, currentCustomName) {
   try {
     showStatus('Updating account name...', 'info');
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/accounts/rename`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/accounts/rename`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -828,7 +828,7 @@ async function saveSettings() {
     
     
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transaction_viewer_settings`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -853,7 +853,7 @@ async function saveSettings() {
 async function loadSettings() {
   try {
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transaction_viewer_settings`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
       method: 'GET'
     });
     

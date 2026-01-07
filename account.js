@@ -114,7 +114,7 @@ async function loadProfileDetails() {
   container.html('<div class="loading">Loading profile details...</div>');
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/profile-info`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/profile-info`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -204,7 +204,7 @@ async function updateProfileInfo() {
   const lastName = $('#edit-last-name').val().trim();
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/update-profile-info`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/update-profile-info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ first_name: firstName, last_name: lastName })
@@ -278,7 +278,7 @@ async function requestEmailChange() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/change-email-request`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/change-email-request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -412,7 +412,7 @@ async function changePassword() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/change-password`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/change-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -447,7 +447,7 @@ async function loadSubscriptionDetails() {
   container.html('<div class="loading">Loading subscription details...</div>');
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/subscription-status`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/billing/subscription-status`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -483,7 +483,7 @@ async function loadSubscriptionDetails() {
     let flaggedTx = 0, flaggedInv = 0;
     let activeTx = 0, activeInv = 0;
     try {
-      const itemsResp = await authenticatedFetch(`${BACKEND_URL}/api/items`);
+      const itemsResp = await authenticatedFetch(`${BACKEND_URL}/api/connections/items`);
       if (itemsResp.ok) {
         const itemsData = await itemsResp.json();
         const items = itemsData.items || [];
@@ -724,7 +724,7 @@ let _stripeCardElement = null;
 
 async function getStripe() {
   if (_stripeInstance) return _stripeInstance;
-  const resp = await authenticatedFetch(`${BACKEND_URL}/api/stripe-publishable-key`);
+  const resp = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe-publishable-key`);
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.error || 'Failed to get Stripe key');
   _stripeInstance = Stripe(data.publishable_key);
@@ -736,7 +736,7 @@ async function startSubscribeFlow() {
   // Fetch pricing for display defaults
   let pricing = { transaction_token_price: 0.30, investment_token_price: 0.18, app_fee: 0.50, server_fee: 0.50, stripe_fee: 0.30 };
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/api/subscription-pricing`);
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/subscription-pricing`);
     const j = await r.json();
     if (r.ok) pricing = j;
   } catch {}
@@ -822,7 +822,7 @@ async function processSubscription() {
     const txn = parseInt($('#sub-tx-next').val()) || txc;
     const inn = parseInt($('#sub-inv-next').val()) || inc;
 
-    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/api/stripe/create-subscription-session`, {
+    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/create-subscription-session`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
     });
@@ -841,7 +841,7 @@ async function processSubscription() {
       return;
     }
 
-    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/api/stripe/confirm-subscription`, {
+    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/confirm-subscription`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payment_intent_id: sessionData.payment_intent_id, tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
     });
@@ -860,7 +860,7 @@ async function processSubscription() {
 
 async function cancelSubscription() {
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/api/stripe/cancel-subscription`, { method: 'POST' });
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/cancel-subscription`, { method: 'POST' });
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
@@ -875,7 +875,7 @@ async function cancelSubscription() {
 
 async function keepSubscription() {
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/api/stripe/keep-subscription`, { method: 'POST' });
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/keep-subscription`, { method: 'POST' });
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
@@ -932,7 +932,7 @@ async function calculateNewSubscriptionTotal() {
 
   // Client-side minimum check based on active minus flagged items (advisory; backend enforces too)
   try {
-    const resp = await authenticatedFetch(`${BACKEND_URL}/api/items`);
+    const resp = await authenticatedFetch(`${BACKEND_URL}/api/connections/items`);
     if (resp.ok) {
       const data = await resp.json();
       const items = data.items || [];
@@ -1010,7 +1010,7 @@ async function calculateNewSubscriptionTotal() {
 
 async function confirmSubscriptionUpdate(transactionTokens, investmentTokens) {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/subscription-update`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/billing/subscription-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -1048,8 +1048,8 @@ async function loadTokenWallet() {
   try {
     // Fetch wallet data and history in parallel
     const [walletResponse, historyResponse] = await Promise.all([
-      authenticatedFetch(`${BACKEND_URL}/api/token-wallet`),
-      authenticatedFetch(`${BACKEND_URL}/api/get-token-history?page=1&per_page=10`)
+      authenticatedFetch(`${BACKEND_URL}/api/billing/token-wallet`),
+      authenticatedFetch(`${BACKEND_URL}/api/billing/get-token-history?page=1&per_page=10`)
     ]);
 
     const walletData = await walletResponse.json();
@@ -1160,7 +1160,7 @@ async function loadTwoFactorAuthSettings() {
   container.html('<div class="loading">Loading 2FA settings...</div>');
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/profile-info`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/profile-info`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -1244,7 +1244,7 @@ function cancelTwoFactorSetup() {
 
 async function fetchTwoFactorSecret() {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/setup_2fa`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/setup_2fa`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -1276,7 +1276,7 @@ async function verifyTwoFactorSetup() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/verify_2fa_setup`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/verify_2fa_setup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code: code })
@@ -1304,7 +1304,7 @@ async function disableTwoFactorAuth() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/disable_2fa`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/disable_2fa`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -1386,7 +1386,7 @@ async function requestAccountDeletion() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/request-account-deletion`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/request-account-deletion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ twofa_code: twoFACode })
@@ -1434,7 +1434,7 @@ async function refreshAccessToken() {
   }
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/refresh`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })
@@ -1512,7 +1512,7 @@ async function handleEmailVerification(token) {
   `;
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/verify-email-change`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/verify-email-change`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })
@@ -1573,7 +1573,7 @@ async function handleEmailRejection(token) {
   `;
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/reject-email-change`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/reject-email-change`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })

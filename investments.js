@@ -55,7 +55,7 @@ async function authenticatedFetch(url, options = {}) {
 async function refreshAccessToken() {
   if (!refreshToken) return false;
   try {
-    const response = await fetch(`${BACKEND_URL}/api/refresh`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })
@@ -431,7 +431,7 @@ function downloadCSV() {
 // Helper to exchange token
 async function exchangePublicToken(public_token) {
     try {
-        const response = await fetch(`${BACKEND_URL}/api/set_access_token`, {
+        const response = await fetch(`${BACKEND_URL}/api/connections/set_access_token`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

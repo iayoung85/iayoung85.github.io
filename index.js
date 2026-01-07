@@ -46,7 +46,7 @@ function showLogin() {
 async function showRegister() {
   try {
     // Check if registration is enabled
-    const response = await fetch(`${BACKEND_URL}/api/registration-status`);
+    const response = await fetch(`${BACKEND_URL}/api/users/registration-status`);
     if (response.ok) {
       const data = await response.json();
       if (!data.enabled) {
@@ -130,7 +130,7 @@ function showTwoFactorLogin() {
 
 async function loadTokenBalances() {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/subscription-status`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/billing/subscription-status`);
     const data = await response.json();
     if (!response.ok) {
       $('#token-tx-count').text('–');
@@ -285,7 +285,7 @@ async function loadConnectedBanks() {
 
 async function toggleRemovalFlag(itemId, currentlyFlagged) {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/item_flag`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/item_flag`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId, flag: !currentlyFlagged })
@@ -331,7 +331,7 @@ async function refreshAccessToken() {
   }
   
   try {
-    const response = await fetch(`${BACKEND_URL}/api/refresh`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ refresh_token: refreshToken })
@@ -449,7 +449,7 @@ $('#login-form').on('submit', async function(e) {
   const password = $('#login-password').val();
   
   try {
-    const response = await fetch(`${BACKEND_URL}/api/login`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -501,7 +501,7 @@ async function resendVerification(email) {
     
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     
-    const response = await fetch(`${BACKEND_URL}/api/resend_verification`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/resend_verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -534,7 +534,7 @@ $('#two-factor-form').on('submit', async function(e) {
   
   try {
     // Call login endpoint again with credentials AND 2FA code
-    const response = await fetch(`${BACKEND_URL}/api/login`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -573,7 +573,7 @@ $('#forgot-form').on('submit', async function(e) {
   try {
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
 
-    const response = await fetch(`${BACKEND_URL}/api/forgot_password`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/forgot_password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -614,7 +614,7 @@ $('#register-form').on('submit', async function(e) {
     // We remove the filename (index.html) to get the base path
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
 
-    const response = await fetch(`${BACKEND_URL}/api/register`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -661,7 +661,7 @@ $('#test-connection').on('click', async function() {
 
 // Plaid integration functions
 async function fetchLinkToken(itemId = null) {
-  let url = `${BACKEND_URL}/api/create_link_token`;
+  let url = `${BACKEND_URL}/api/connections/create_link_token`;
   // Add query parameter if itemId is provided
   if (itemId) {
     url += `?item_id=${encodeURIComponent(itemId)}`;
@@ -679,7 +679,7 @@ async function fetchLinkToken(itemId = null) {
 }
 
 async function getUserItems() {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/items`);
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/items`);
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -692,7 +692,7 @@ async function getUserItems() {
 }
 
 async function exchangePublicToken(public_token) {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/set_access_token`, {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/set_access_token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -728,7 +728,7 @@ $('#link-button').on('click', async function() {
           const institutionName = metadata.institution?.name;
           
           if (institutionId) {
-            const dupCheckResponse = await authenticatedFetch(`${BACKEND_URL}/api/check_duplicate_institution`, {
+            const dupCheckResponse = await authenticatedFetch(`${BACKEND_URL}/api/connections/check_duplicate_institution`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ institution_id: institutionId })
@@ -782,7 +782,7 @@ $('#link-investment-button').on('click', async function() {
   }
   
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/create_link_token?mode=investments_only`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/create_link_token?mode=investments_only`);
     
     if (response.ok) {
       const data = await response.json();
@@ -795,7 +795,7 @@ $('#link-investment-button').on('click', async function() {
             const institutionName = metadata.institution?.name;
             
             if (institutionId) {
-              const dupCheckResponse = await authenticatedFetch(`${BACKEND_URL}/api/check_duplicate_institution`, {
+              const dupCheckResponse = await authenticatedFetch(`${BACKEND_URL}/api/connections/check_duplicate_institution`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ institution_id: institutionId })
@@ -856,7 +856,7 @@ async function reconnectBank(itemId, bankName) {
       onSuccess: async (public_token, metadata) => {
         try {
           // Update mode - refresh accounts from Plaid (user may have changed account selection)
-          const response = await authenticatedFetch(`${BACKEND_URL}/api/refresh_item_accounts`, {
+          const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/refresh_item_accounts`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ item_id: itemId })
@@ -915,7 +915,7 @@ async function disconnectBank(itemId, bankName) {
   
   try {
     // First call: detect if swap opportunity exists
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId })
@@ -1072,7 +1072,7 @@ async function applySwapAndDisconnect(itemId, bankName) {
   }
   
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -1103,7 +1103,7 @@ async function closeSwapModalAndDisconnect(itemId) {
   closeSwapModal();
   
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/remove_item`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ item_id: itemId })
