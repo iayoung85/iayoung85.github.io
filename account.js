@@ -70,6 +70,89 @@ function initializePage() {
 }
 
 // ============================================
+// TOKEN HANDLERS (EMAIL CHANGE / DELETION LINKS)
+// ============================================
+
+function showTokenResult(title, message, type = 'info') {
+  const container = $('.main-content');
+  const cardHtml = `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">${title}</h3>
+      </div>
+      <div class="message ${type}" style="margin-top: 12px;">${message}</div>
+      <div class="flex-group" style="margin-top: 20px; gap: 10px;">
+        <a class="btn btn-primary" href="index.html">Go to Login</a>
+        <a class="btn btn-secondary" href="account.html">Back to Account</a>
+      </div>
+    </div>
+  `;
+
+  if (container.length) {
+    container.html(cardHtml);
+  } else {
+    $('body').html(cardHtml);
+  }
+}
+
+function buildFrontendContext() {
+  const origin = window.location.origin.replace(/\/$/, '');
+  const path = window.location.pathname || '/account.html';
+  const accountPath = path.startsWith('/') ? path : `/${path}`;
+  return { frontend_url: origin, account_path: accountPath };
+}
+
+async function handleEmailVerification(token) {
+  try {
+    const { frontend_url, account_path } = buildFrontendContext();
+    const response = await fetch(`${BACKEND_URL}/api/auth/verify-email-change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, frontend_url, account_path })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showTokenResult('Email Change Verified', 'Your email has been updated. Please log in with your new email.', 'success');
+    } else {
+      showTokenResult('Email Change Failed', data.error || 'Invalid or expired link.', 'error');
+    }
+  } catch (err) {
+    showTokenResult('Error', `Could not process verification: ${err.message}`, 'error');
+  } finally {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('verify_email_change');
+    window.history.replaceState({}, document.title, url.toString());
+  }
+}
+
+async function handleEmailRejection(token) {
+  try {
+    const { frontend_url, account_path } = buildFrontendContext();
+    const response = await fetch(`${BACKEND_URL}/api/auth/reject-email-change`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, frontend_url, account_path })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showTokenResult('Email Change Rejected', 'We locked the account and sent a password reset link to the original email.', 'success');
+    } else {
+      showTokenResult('Email Change Rejection Failed', data.error || 'Invalid or expired link.', 'error');
+    }
+  } catch (err) {
+    showTokenResult('Error', `Could not process rejection: ${err.message}`, 'error');
+  } finally {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('reject_email_change');
+    window.history.replaceState({}, document.title, url.toString());
+  }
+}
+
+// ============================================
 // SETTINGS MENU (Content Switching)
 // ============================================
 
