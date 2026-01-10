@@ -87,6 +87,7 @@ function showDashboard() {
   
   // Apply approval-related UI state
   updateApprovalUI();
+  renderDashboardDeletionBanner();
   
   // Setup security features for logged-in users
   setupActivityListeners();
@@ -106,6 +107,39 @@ function updateApprovalUI() {
     $('#link-button').prop('disabled', false).css({ opacity: '1', cursor: 'pointer' });
     $('#link-investment-button').prop('disabled', false).css({ opacity: '1', cursor: 'pointer' });
     $('#unlink-button').prop('disabled', false).css({ opacity: '1', cursor: 'pointer' });
+  }
+}
+
+// Show a banner when account deletion is pending
+async function renderDashboardDeletionBanner() {
+  const banner = $('#dashboard-deletion-banner');
+  if (!banner.length || !authToken) return;
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/deletion-status`, { method: 'GET' });
+    const data = await response.json();
+    if (!response.ok) {
+      banner.empty();
+      return;
+    }
+    if (data.pending) {
+      const expires = data.token_expires_at ? ` This link expires at ${new Date(data.token_expires_at).toLocaleString()}.` : '';
+      banner.html(`
+        <div class="card" style="background: #fff8e1; border-color: #ffe082; margin-bottom: 16px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div style="font-size: 20px;">⌛</div>
+            <div>
+              <p style="margin: 0; font-weight: 600;">Deletion pending</p>
+              <p style="margin: 4px 0 0 0; color: #666; font-size: 13px;">Check your email to confirm account ownership and complete the deletion process.${expires}</p>
+            </div>
+          </div>
+        </div>
+      `);
+    } else {
+      banner.empty();
+    }
+  } catch (error) {
+    console.error('Error fetching dashboard deletion status:', error);
+    banner.empty();
   }
 }
 
@@ -449,7 +483,7 @@ $('#login-form').on('submit', async function(e) {
   const password = $('#login-password').val();
   
   try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
+    const response = await fetch(`${BACKEND_URL}/api/users/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -614,7 +648,7 @@ $('#register-form').on('submit', async function(e) {
     // We remove the filename (index.html) to get the base path
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
 
-    const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
+    const response = await fetch(`${BACKEND_URL}/api/users/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

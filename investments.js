@@ -204,7 +204,7 @@ function renderAccountStatus() {
     let actionHtml = '';
     let statusClass = 'status-inactive';
     let statusText = 'No Investment Accounts. If you believe there is an investment account associated with this bank, please try refreshing the connection from the dashboard and be sure to select the investment accounts to authorize sharing.';
-    
+    let unsuportedStatusText = 'Investments Not Supported by Institution. This institution does not support investment account access via Plaid even if you selected investment accounts during linking.';
     if (item.status === 'active') {
       statusClass = 'status-active';
       statusText = 'Active';
@@ -213,6 +213,10 @@ function renderAccountStatus() {
       statusClass = 'status-inactive';
       statusText = 'Available (Not Active)';
       actionHtml = `<button class="activate-btn" data-item="${item.plaid_item_id}" onclick="syncItem('${item.plaid_item_id}', true)">Activate & Sync</button>`;
+    } else if (item.status === 'unsupported_by_institution') {
+      statusClass = 'status-unsupported';
+      statusText = unsuportedStatusText;
+      actionHtml = `<span style="font-size: 11px; color: #666;">Please contact support if you believe this is an error.</span>`;
     }
     
     html += `

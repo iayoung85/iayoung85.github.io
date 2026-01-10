@@ -21,6 +21,8 @@ $(document).ready(async function() {
     const urlParams = new URLSearchParams(window.location.search);
     const verifyToken = urlParams.get('verify_email_change');
     const rejectToken = urlParams.get('reject_email_change');
+    const deletionToken = urlParams.get('confirm_account_deletion');
+    const cancelDeletionToken = urlParams.get('cancel_account_deletion');
     
     if (verifyToken) {
       await handleEmailVerification(verifyToken);
@@ -29,6 +31,16 @@ $(document).ready(async function() {
     
     if (rejectToken) {
       await handleEmailRejection(rejectToken);
+      return;
+    }
+    
+    if (deletionToken) {
+      await handleAccountDeletionConfirmation(deletionToken);
+      return;
+    }
+    
+    if (cancelDeletionToken) {
+      await handleAccountDeletionCancellation(cancelDeletionToken);
       return;
     }
     
@@ -53,6 +65,7 @@ $(document).ready(async function() {
 function initializePage() {
   setupSettingsMenu();
   setupActivityListeners();
+  renderGlobalDeletionBanner();
   loadProfileDetails();
 }
 
@@ -319,16 +332,16 @@ function loadPasswordChangeForm() {
       <form id="password-change-form">
         <div class="form-group">
           <label for="current-password">Current Password</label>
-          <input type="password" id="current-password" required>
+          <input type="password" id="current-password" autocomplete="current-password" required>
         </div>
         <div class="form-group">
           <label for="new-password">New Password</label>
-          <input type="password" id="new-password" required>
+          <input type="password" id="new-password" autocomplete="new-password" required>
           <div class="password-strength" id="password-strength" style="margin-top: 8px; font-size: 12px;"></div>
         </div>
         <div class="form-group">
           <label for="confirm-password">Confirm Password</label>
-          <input type="password" id="confirm-password" required>
+          <input type="password" id="confirm-password" autocomplete="new-password" required>
         </div>
         <div class="form-group">
           <label for="password-2fa">2FA Code (if enabled)</label>
@@ -524,12 +537,18 @@ async function loadSubscriptionDetails() {
           ` : ''}
           ${(data.status === 'active') ? `
             <button class="btn btn-danger" onclick="cancelSubscription()">Unsubscribe</button>
+            <button class="btn btn-secondary" onclick="startUpdatePaymentMethodFlow()">Update Payment Method</button>
           ` : ''}
           ${(data.status === 'first_month') ? `
             <button class="btn btn-danger" onclick="cancelSubscription()">Unsubscribe</button>
+            <button class="btn btn-secondary" onclick="startUpdatePaymentMethodFlow()">Update Payment Method</button>
           ` : ''}
           ${(data.status === 'ending') ? `
             <button class="btn btn-success" onclick="keepSubscription()">Keep Subscription</button>
+            <button class="btn btn-secondary" onclick="startUpdatePaymentMethodFlow()">Update Payment Method</button>
+          ` : ''}
+          ${(data.status === 'payment_failed') ? `
+            <button class="btn btn-warning" onclick="startFixPaymentFlow()">Fix Payment</button>
           ` : ''}
         </div>
       </div>
@@ -724,7 +743,7 @@ let _stripeCardElement = null;
 
 async function getStripe() {
   if (_stripeInstance) return _stripeInstance;
-  const resp = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe-publishable-key`);
+  const resp = await authenticatedFetch(`${BACKEND_URL}/api/connections/stripe-publishable-key`);
   const data = await resp.json();
   if (!resp.ok) throw new Error(data.error || 'Failed to get Stripe key');
   _stripeInstance = Stripe(data.publishable_key);
@@ -822,7 +841,7 @@ async function processSubscription() {
     const txn = parseInt($('#sub-tx-next').val()) || txc;
     const inn = parseInt($('#sub-inv-next').val()) || inc;
 
-    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/create-subscription-session`, {
+    const sessionResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/create-subscription-session`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
     });
@@ -841,7 +860,7 @@ async function processSubscription() {
       return;
     }
 
-    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/confirm-subscription`, {
+    const finalizeResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/confirm-subscription`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ payment_intent_id: sessionData.payment_intent_id, tx_current: txc, inv_current: inc, tx_next: txn, inv_next: inn })
     });
@@ -858,9 +877,179 @@ async function processSubscription() {
   }
 }
 
+// ============================================
+// FIX PAYMENT FLOW (Update Card + Retry Invoice)
+// ============================================
+
+let _stripeFixCardElement = null;
+
+async function startFixPaymentFlow() {
+  const container = $('#subscription-content');
+  const html = `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Fix Payment</h3>
+        <p>Your last payment failed. Update your card and retry the latest invoice.</p>
+      </div>
+      <form id="fix-payment-form">
+        <div id="fix-card-element" style="padding:12px;border:1px solid #ddd;border-radius:6px;margin-top:12px;"></div>
+        <div class="flex-group" style="margin-top:12px;">
+          <button type="submit" class="btn btn-warning">Update Card & Retry Payment</button>
+          <button type="button" class="btn btn-secondary" onclick="loadSubscriptionDetails()">Cancel</button>
+        </div>
+      </form>
+      <div id="fix-payment-message"></div>
+    </div>
+  `;
+
+  container.html(html);
+
+  // Initialize Stripe Elements for card update
+  try {
+    const stripe = await getStripe();
+    const elements = stripe.elements();
+    _stripeFixCardElement = elements.create('card');
+    _stripeFixCardElement.mount('#fix-card-element');
+  } catch (e) {
+    showMessage('fix-payment-message', `Stripe init failed: ${e.message}`, 'error');
+  }
+
+  $('#fix-payment-form').on('submit', async function(e) {
+    e.preventDefault();
+    await processFixPayment();
+  });
+}
+
+async function processFixPayment() {
+  try {
+    // 1) Create a SetupIntent for this customer
+    const intentResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/create-setup-intent`, {
+      method: 'POST'
+    });
+    const intentData = await intentResp.json();
+    if (!intentResp.ok) {
+      showMessage('fix-payment-message', intentData.error || 'Failed to create setup intent', 'error');
+      return;
+    }
+
+    const stripe = await getStripe();
+    const confirmResult = await stripe.confirmCardSetup(intentData.client_secret, {
+      payment_method: { card: _stripeFixCardElement }
+    });
+    if (confirmResult.error) {
+      showMessage('fix-payment-message', confirmResult.error.message || 'Card update failed', 'error');
+      return;
+    }
+
+    // 2) Retry the latest invoice
+    const retryResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/retry-latest-invoice`, {
+      method: 'POST'
+    });
+    const retryData = await retryResp.json();
+    if (!retryResp.ok) {
+      showMessage('fix-payment-message', retryData.error || 'Failed to retry invoice', 'error');
+      return;
+    }
+
+    await loadSubscriptionDetails();
+    showMessage('subscription-message', '✓ Payment method updated. Invoice retry attempted.', 'success');
+  } catch (e) {
+    console.error('Fix payment error:', e);
+    showMessage('fix-payment-message', `Error: ${e.message}`, 'error');
+  }
+}
+
+// ============================================
+// UPDATE PAYMENT METHOD FLOW (Future Payments)
+// ============================================
+
+let _stripeUpdateCardElement = null;
+
+async function startUpdatePaymentMethodFlow() {
+  const container = $('#subscription-content');
+  const html = `
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Update Payment Method</h3>
+        <p>This updates the default card used for future invoices.</p>
+      </div>
+      <form id="update-pm-form">
+        <div id="update-card-element" style="padding:12px;border:1px solid #ddd;border-radius:6px;margin-top:12px;"></div>
+        <div class="flex-group" style="margin-top:12px;">
+          <button type="submit" class="btn btn-primary">Save New Card</button>
+          <button type="button" class="btn btn-secondary" onclick="loadSubscriptionDetails()">Cancel</button>
+        </div>
+      </form>
+      <div id="update-pm-message"></div>
+    </div>
+  `;
+
+  container.html(html);
+
+  try {
+    const stripe = await getStripe();
+    const elements = stripe.elements();
+    _stripeUpdateCardElement = elements.create('card');
+    _stripeUpdateCardElement.mount('#update-card-element');
+  } catch (e) {
+    showMessage('update-pm-message', `Stripe init failed: ${e.message}`, 'error');
+  }
+
+  $('#update-pm-form').on('submit', async function(e) {
+    e.preventDefault();
+    await processUpdatePaymentMethod();
+  });
+}
+
+async function processUpdatePaymentMethod() {
+  try {
+    // 1) Create a SetupIntent
+    const intentResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/create-setup-intent`, {
+      method: 'POST'
+    });
+    const intentData = await intentResp.json();
+    if (!intentResp.ok) {
+      showMessage('update-pm-message', intentData.error || 'Failed to create setup intent', 'error');
+      return;
+    }
+
+    // 2) Confirm card setup client-side
+    const stripe = await getStripe();
+    const confirmResult = await stripe.confirmCardSetup(intentData.client_secret, {
+      payment_method: { card: _stripeUpdateCardElement }
+    });
+    if (confirmResult.error) {
+      showMessage('update-pm-message', confirmResult.error.message || 'Card update failed', 'error');
+      return;
+    }
+
+    const setupIntent = confirmResult.setupIntent || {};
+    const setup_intent_id = setupIntent.id;
+    const payment_method_id = setupIntent.payment_method;
+
+    // 3) Tell backend to set as default payment method
+    const setResp = await authenticatedFetch(`${BACKEND_URL}/api/billing/set-default-payment-method`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setup_intent_id, payment_method_id })
+    });
+    const setData = await setResp.json();
+    if (!setResp.ok) {
+      showMessage('update-pm-message', setData.error || 'Failed to set default payment method', 'error');
+      return;
+    }
+
+    await loadSubscriptionDetails();
+    showMessage('subscription-message', '✓ Payment method updated for future invoices.', 'success');
+  } catch (e) {
+    console.error('Update payment method error:', e);
+    showMessage('update-pm-message', `Error: ${e.message}`, 'error');
+  }
+}
+
 async function cancelSubscription() {
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/cancel-subscription`, { method: 'POST' });
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/cancel-subscription`, { method: 'POST' });
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
@@ -875,7 +1064,7 @@ async function cancelSubscription() {
 
 async function keepSubscription() {
   try {
-    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/stripe/keep-subscription`, { method: 'POST' });
+    const r = await authenticatedFetch(`${BACKEND_URL}/api/billing/keep-subscription`, { method: 'POST' });
     const j = await r.json();
     if (r.ok) {
       await loadSubscriptionDetails();
@@ -1244,7 +1433,7 @@ function cancelTwoFactorSetup() {
 
 async function fetchTwoFactorSecret() {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/setup_2fa`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/setup_2fa`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -1335,6 +1524,7 @@ function loadAccountDeletionForm() {
   const container = $('#deletion-content');
 
   const html = `
+    <div id="deletion-pending-banner"></div>
     <div class="card" style="background: #fdf2f2; border-color: #fcc;">
       <div style="display: flex; gap: 10px; align-items: flex-start;">
         <div style="font-size: 24px;">⚠️</div>
@@ -1355,7 +1545,7 @@ function loadAccountDeletionForm() {
       <div class="card-header">
         <h3 class="card-title">Request Account Deletion</h3>
       </div>
-      <p class="text-muted">Your account will be scheduled for deletion at the end of your current billing period. You'll receive a confirmation email with a link you must click to proceed.</p>
+      <p class="text-muted">You'll receive a confirmation email with a link you must click. After confirming, your account will be immediately and permanently deleted.</p>
       <form id="deletion-form">
         <div class="form-group">
           <label for="deletion-2fa">2FA Code (if enabled)</label>
@@ -1363,7 +1553,8 @@ function loadAccountDeletionForm() {
         </div>
         <div class="flex-group">
           <button type="submit" class="btn btn-danger">Request Account Deletion</button>
-          <button type="button" class="btn btn-secondary" onclick="$('#deletion-content').html('<div class=\\\"message\\\">Deletion cancelled.</div>'); loadAccountDeletionForm();">Cancel</button>
+          <button type="button" class="btn btn-secondary" id="cancel-deletion-btn">Cancel Deletion Request</button>
+          <button type="button" class="btn btn-link" id="resend-deletion-btn" style="text-decoration: underline;">Resend confirmation email</button>
         </div>
       </form>
       <div id="deletion-message"></div>
@@ -1376,12 +1567,23 @@ function loadAccountDeletionForm() {
     e.preventDefault();
     await requestAccountDeletion();
   });
+
+  $('#cancel-deletion-btn').on('click', async function() {
+    await cancelAccountDeletion();
+  });
+
+  $('#resend-deletion-btn').on('click', async function() {
+    await resendDeletionEmail();
+  });
+
+  // Fetch and render pending banner
+  renderDeletionPendingBanner();
 }
 
 async function requestAccountDeletion() {
   const twoFACode = $('#deletion-2fa').val().trim();
 
-  if (!confirm('Are you absolutely sure? This will delete your account and all associated data at the end of the billing month. This cannot be undone.')) {
+  if (!confirm('Are you absolutely sure? This will permanently delete your account and all associated data immediately after you confirm the deletion email. This cannot be undone.')) {
     return;
   }
 
@@ -1408,9 +1610,242 @@ async function requestAccountDeletion() {
   }
 }
 
+async function resendDeletionEmail() {
+  const twoFACode = $('#deletion-2fa').val().trim();
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/resend-account-deletion-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ twofa_code: twoFACode })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showMessage('deletion-message', data.message || 'Deletion confirmation email resent. Check your inbox.', 'success');
+      renderDeletionPendingBanner();
+    } else {
+      showMessage('deletion-message', data.error || 'Failed to resend deletion email', 'error');
+    }
+  } catch (error) {
+    console.error('Error resending deletion email:', error);
+    showMessage('deletion-message', `Connection error: ${error.message}`, 'error');
+  }
+}
+
+async function cancelAccountDeletion() {
+  const twoFACode = $('#deletion-2fa').val().trim();
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/cancel-account-deletion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ twofa_code: twoFACode })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      showMessage('deletion-message', data.message || 'Deletion request canceled.', 'success');
+      setTimeout(() => {
+        loadAccountDeletionForm();
+      }, 2000);
+    } else {
+      showMessage('deletion-message', data.error || 'Failed to cancel deletion request', 'error');
+    }
+  } catch (error) {
+    console.error('Error canceling deletion:', error);
+    showMessage('deletion-message', `Connection error: ${error.message}`, 'error');
+  }
+}
+
+async function renderDeletionPendingBanner() {
+  const banner = $('#deletion-pending-banner');
+  try {
+    const data = await fetchDeletionStatus();
+    if (response.ok && data.pending) {
+      const expires = data.token_expires_at ? ` This link expires at ${new Date(data.token_expires_at).toLocaleString()}.` : '';
+      banner.html(`
+        <div class="card" style="background: #fff8e1; border-color: #ffe082; margin-bottom: 16px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div style="font-size: 20px;">⌛</div>
+            <div>
+              <p style="margin: 0; font-weight: 600;">Deletion pending</p>
+              <p style="margin: 4px 0 0 0; color: #666; font-size: 13px;">Check your email to confirm account ownership and complete the deletion process.${expires}</p>
+            </div>
+          </div>
+        </div>
+      `);
+    } else {
+      banner.empty();
+    }
+  } catch (error) {
+    console.error('Error fetching deletion status:', error);
+    banner.empty();
+  }
+}
+
+async function renderGlobalDeletionBanner() {
+  const banner = $('#global-deletion-banner');
+  if (!banner.length) return;
+  try {
+    const data = await fetchDeletionStatus();
+    if (data.pending) {
+      const expires = data.token_expires_at ? ` This link expires at ${new Date(data.token_expires_at).toLocaleString()}.` : '';
+      banner.html(`
+        <div class="card" style="background: #fff8e1; border-color: #ffe082; margin-bottom: 16px;">
+          <div style="display: flex; gap: 10px; align-items: flex-start;">
+            <div style="font-size: 20px;">⌛</div>
+            <div>
+              <p style="margin: 0; font-weight: 600;">Deletion pending</p>
+              <p style="margin: 4px 0 0 0; color: #666; font-size: 13px;">Check your email to confirm account ownership and complete the deletion process.${expires}</p>
+            </div>
+          </div>
+        </div>
+      `);
+    } else {
+      banner.empty();
+    }
+  } catch (error) {
+    console.error('Error fetching global deletion status:', error);
+    banner.empty();
+  }
+}
+
+async function fetchDeletionStatus() {
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/users/deletion-status`, { method: 'GET' });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || 'Failed to fetch deletion status');
+  }
+  return data;
+}
+
 // ============================================
 // UTILITY FUNCTIONS
 // ============================================
+
+async function handleAccountDeletionConfirmation(token) {
+  const container = document.body;
+  container.innerHTML = `
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+      <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+        <h2 style="color: #182742; margin-bottom: 20px;">Processing Account Deletion...</h2>
+        <div class="loading">Please wait while we delete your account</div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/confirm-account-deletion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deletion_token: token })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      container.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+          <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <h2 style="color: #28a745; margin-bottom: 20px;">✓ Account Deleted</h2>
+            <p style="color: #666; margin-bottom: 20px;">${data.message}</p>
+            <p style="color: #666; margin-bottom: 30px;">You will be redirected to the login page in 3 seconds...</p>
+            <a href="index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Login Now</a>
+          </div>
+        </div>
+      `;
+      setTimeout(() => {
+        // Clear all stored auth data
+        localStorage.clear();
+        window.location.href = 'index.html';
+      }, 3000);
+    } else {
+      container.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+          <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <h2 style="color: #dc3545; margin-bottom: 20px;">❌ Cannot Delete Account</h2>
+            <p style="color: #666; margin-bottom: 20px;">${data.error || 'Unable to delete your account.'}</p>
+            <p style="color: #999; font-size: 14px; margin-bottom: 20px;">${data.details || ''}</p>
+            <a href="index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Login</a>
+          </div>
+        </div>
+      `;
+      setTimeout(() => {
+        localStorage.clear();
+        window.location.href = 'index.html';
+      }, 5000);
+    }
+  } catch (error) {
+    console.error('Error confirming account deletion:', error);
+    container.innerHTML = `
+      <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+        <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+          <h2 style="color: #dc3545; margin-bottom: 20px;">❌ Connection Error</h2>
+          <p style="color: #666; margin-bottom: 20px;">Unable to process your deletion request. Please try again later.</p>
+          <a href="index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Login</a>
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function handleAccountDeletionCancellation(token) {
+  const container = document.body;
+  container.innerHTML = `
+    <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+      <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+        <h2 style="color: #182742; margin-bottom: 20px;">Canceling Deletion Request...</h2>
+        <div class="loading">Please wait</div>
+      </div>
+    </div>
+  `;
+
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/auth/cancel-account-deletion`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deletion_token: token })
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      container.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+          <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <h2 style="color: #28a745; margin-bottom: 20px;">✓ Deletion Request Canceled</h2>
+            <p style="color: #666; margin-bottom: 30px;">You can continue using your account.</p>
+            <a href="account.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Account</a>
+          </div>
+        </div>
+      `;
+    } else {
+      container.innerHTML = `
+        <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+          <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+            <h2 style="color: #dc3545; margin-bottom: 20px;">❌ Unable to Cancel</h2>
+            <p style="color: #666; margin-bottom: 20px;">${data.error || 'Unable to cancel deletion request.'}</p>
+            <a href="index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Login</a>
+          </div>
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.error('Error canceling account deletion:', error);
+    container.innerHTML = `
+      <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px;">
+        <div style="background: white; border-radius: 12px; padding: 40px; max-width: 500px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+          <h2 style="color: #dc3545; margin-bottom: 20px;">❌ Connection Error</h2>
+          <p style="color: #666; margin-bottom: 20px;">Unable to process your cancellation. Please try again later.</p>
+          <a href="index.html" class="btn btn-primary" style="text-decoration: none; display: inline-block;">Go to Login</a>
+        </div>
+      </div>
+    `;
+  }
+}
 
 function showMessage(elementId, message, type) {
   $(`#${elementId}`).html(`<div class="message ${type}">${message}</div>`);
