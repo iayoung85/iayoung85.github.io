@@ -115,14 +115,28 @@ function logout() {
 // Initialize
 $(document).ready(async function() {
   await window.BACKEND_URL_PROMISE;
-  loadAccounts();
   setDefaultDates();
   resetIdleTimeout();
   setupActivityListeners();
-  loadSettings(); // Load saved settings
+  await loadAccounts();
+  await loadSettings(); // Load saved settings
+  
+  // Sync transactions with Plaid on page load (after accounts are loaded/selected)
+  await autoSyncAndLoadTransactions();
+
   
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
+    renderTransactionTable();
+  });
+  
+  // Add event listener for date range changes - re-render when user changes dates
+  $(document).on('input change', '#start-date, #end-date', function() {
+    renderTransactionTable();
+  });
+  
+  // Add event listener for account selection changes - re-render when user changes account selection
+  $(document).on('change', '.account-checkbox', function() {
     renderTransactionTable();
   });
 
@@ -191,6 +205,26 @@ function setDefaultDates() {
   document.getElementById('end-date').value = formatDate(end);
 }
 
+function setEarliestToDate() {
+  const end = new Date();
+  const start = new Date();
+  const today = new Date();
+  
+  today.setHours(0, 0, 0, 0);
+  start.setDate(today.getDate() - 90);
+  // Helper to format date as YYYY-MM-DD in local time
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+  
+  document.getElementById('start-date').value = formatDate(start);
+  document.getElementById('end-date').value = formatDate(end);
+  renderTransactionTable();
+}
+
 function setMonthToDate() {
   const end = new Date();
   const start = new Date();
@@ -206,6 +240,7 @@ function setMonthToDate() {
   
   document.getElementById('start-date').value = formatDate(start);
   document.getElementById('end-date').value = formatDate(end);
+  renderTransactionTable();
 }
 
 function setLastMonth() {
@@ -225,6 +260,7 @@ function setLastMonth() {
   
   document.getElementById('start-date').value = formatDate(start);
   document.getElementById('end-date').value = formatDate(end);
+  renderTransactionTable();
 }
 
 function toggleConfig() {
@@ -439,6 +475,7 @@ function toggleBank(institution) {
   // Only toggle enabled account checkboxes
   const accountCheckboxes = $(`.account-checkbox[data-bank="${institution}"]:not(:disabled)`);
   accountCheckboxes.prop('checked', bankCheckbox.prop('checked'));
+  renderTransactionTable();
 }
 
 async function performSync(accountIds, startDate, endDate, activate = false) {
@@ -466,9 +503,16 @@ async function performSync(accountIds, startDate, endDate, activate = false) {
 }
 
 async function syncTransactions() {
+  // This function is called when user manually clicks a sync button (if we keep one)
+  // For now, syncing happens automatically on page load via autoSyncAndLoadTransactions()
+  await autoSyncAndLoadTransactions();
+}
+
+async function autoSyncAndLoadTransactions() {
+  // This function runs on page load and handles sync + fetch automatically
+  const selectedAccounts = getSelectedAccounts();
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
-  const selectedAccounts = getSelectedAccounts();
   
   if (!startDate || !endDate) {
     showStatus('Please select a date range', 'error');
@@ -493,38 +537,27 @@ async function syncTransactions() {
   try {
     showStatus('Syncing transactions from Plaid...', 'info');
     
-    const data = await performSync(selectedAccounts, startDate, endDate);
-    
-    let successMsg = `Synced ${data.synced_count || 0} transactions (${data.new_count || 0} new, ${data.updated_count || 0} updated) from ${selectedAccounts.length} active account(s)`;
-    showStatus(successMsg, 'success');
+    const syncData = await performSync(selectedAccounts, startDate, endDate);
+    let successMsg = `Synced ${syncData.synced_count || 0} transactions (${syncData.new_count || 0} new, ${syncData.updated_count || 0} updated)`;
+    showStatus(successMsg, 'info');
     synced = true;
-    document.getElementById('load-btn').disabled = false;
+    
+    // Now fetch all transactions from backend (no filters, frontend handles all filtering)
+    await fetchAllTransactions();
     
   } catch (error) {
     showStatus(`Sync failed: ${error.message}`, 'error');
+    // Still try to load cached transactions so the user sees something
+    await fetchAllTransactions();
   }
 }
 
-async function loadTransactions() {
-  const startDate = document.getElementById('start-date').value;
-  const endDate = document.getElementById('end-date').value;
-  const selectedAccounts = getSelectedAccounts();
-  const timezone = document.getElementById('timezone').value;
-  
+async function fetchAllTransactions() {
+  // Fetch all transactions for the user (backend returns all, frontend filters)
   try {
-    showStatus('Loading transactions...', 'info');
+    showStatus('Loading all transactions...', 'info');
     
-    const params = new URLSearchParams({
-      start_date: startDate,
-      end_date: endDate,
-      timezone: timezone
-    });
-    
-    selectedAccounts.forEach(id => {
-      params.append('account_ids[]', id);
-    });
-    
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transactions?${params}`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transactions`, {
       method: 'GET',
       mode: 'cors'
     });
@@ -538,7 +571,7 @@ async function loadTransactions() {
     
     transactions = data.transactions || [];
     renderTransactionTable();
-    showStatus(`Loaded ${transactions.length} transactions`, 'success');
+    showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
     setTimeout(() => clearStatus(), 2000);
     
   } catch (error) {
@@ -550,16 +583,48 @@ function renderTransactionTable() {
   const container = document.getElementById('table-container');
   
   if (transactions.length === 0) {
-    container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
+    container.innerHTML = '<div class="empty-state">No transactions found. Sync transactions first.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     return;
   }
 
+  // Get all filter criteria from UI
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  const selectedAccounts = getSelectedAccounts();
+  const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
+  
   // Get selected optional fields
   const optionalFields = [];
   $('.field-checkbox:checked').each(function() {
     optionalFields.push($(this).val());
   });
+  
+  // Apply all filters to transactions array
+  const filteredTransactions = transactions.filter(txn => {
+    // Filter by date range
+    if (txn.date < startDate || txn.date > endDate) {
+      return false;
+    }
+    
+    // Filter by selected accounts
+    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.plaid_account_id)) {
+      return false;
+    }
+    
+    // Filter pending transactions - only show if pending checkbox is checked
+    if (txn.pending && !showPendingCheckbox) {
+      return false;
+    }
+    
+    return true;
+  });
+  
+  if (filteredTransactions.length === 0) {
+    container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
+    document.getElementById('export-buttons').classList.add('hidden');
+    return;
+  }
   
   let html = '<table><thead><tr>';
   html += '<th>Date</th>';
@@ -579,7 +644,7 @@ function renderTransactionTable() {
 
   html += '</tr></thead><tbody>';
   
-  transactions.forEach(txn => {
+  filteredTransactions.forEach(txn => {
     // Parse the date string properly
     const dateObj = new Date(txn.date);
     // Format as MM/DD/YYYY using UTC to prevent timezone shifts

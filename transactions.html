@@ -43,6 +43,7 @@
           <div style="display: flex; align-items: center; gap: 10px;">
             <input type="date" id="start-date">
             <input type="date" id="end-date">
+            <button onclick="setEarliestToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Earliest to Date</button>
             <button onclick="setMonthToDate()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Month to Date</button>
             <button onclick="setLastMonth()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Last Month</button>
           </div>
@@ -78,8 +79,7 @@
         <!-- Action Buttons -->
         <div class="config-section">
           <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <button onclick="syncTransactions()">Sync Transactions</button>
-            <button onclick="loadTransactions()" id="load-btn" disabled>Load Data</button>
+            <button onclick="syncTransactions()">Re-sync transactions with Plaid</button>
             <button onclick="saveSettings()" class="secondary">Save Settings</button>
             
             <!-- Export Buttons (initially hidden until data loaded) -->
