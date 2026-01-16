@@ -2,6 +2,7 @@
 
 let holdingsData = [];
 let accountStatus = [];
+let investmentAccounts = [];
 let currentUser = null;
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
@@ -20,10 +21,24 @@ try {
 $(document).ready(async function() {
   await window.BACKEND_URL_PROMISE;
   
-  // Load initial data
-  loadAccountStatus();
-  loadHoldings();
-  loadSettings();
+  // Load accounts first so selections exist
+  await loadAccounts();
+  await loadSettings();
+  await loadHoldings();
+
+  // Wire optional field changes to re-render
+  $(document).on('change', '.field-checkbox', function() {
+    renderTable();
+  });
+  // Account selection changes
+  $(document).on('change', '.account-checkbox', function() {
+    renderTable();
+  });
+  // Bank-level checkbox toggle
+  $(document).on('change', '.bank-checkbox', function() {
+    const bank = $(this).data('bank');
+    toggleBank(bank, $(this).prop('checked'));
+  });
 });
 
 // --- API Calls ---
@@ -68,6 +83,135 @@ async function refreshAccessToken() {
     }
   } catch (e) { console.error(e); }
   return false;
+}
+
+// --- Accounts (selection similar to transactions) ---
+async function loadAccounts() {
+  const container = $('#account-selector');
+  container.html('<div class="status-message info">Loading accounts...</div>');
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts/all`);
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+
+    investmentAccounts = data.accounts || [];
+    renderAccountSelector();
+    // Auto-select all active/available accounts
+    selectAllAccounts();
+  } catch (error) {
+    container.html(`<div class="error">Error loading accounts: ${error.message}</div>`);
+  }
+}
+
+function renderAccountSelector() {
+  const container = $('#account-selector');
+  if (!investmentAccounts || investmentAccounts.length === 0) {
+    container.html('<div class="empty-state">No investment accounts found. Connect or activate investments in dashboard.</div>');
+    return;
+  }
+
+  // Group accounts by institution
+  const grouped = {};
+  investmentAccounts.forEach(acc => {
+    const key = acc.institution_name || 'Unknown Institution';
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(acc);
+  });
+
+  let html = '';
+  Object.keys(grouped).forEach(bank => {
+    const accounts = grouped[bank];
+    const allDisabled = accounts.every(a => a.status !== 'active');
+    const bankStatusBadge = bankStatusLabel(accounts[0]);
+    const bankItemId = accounts[0].plaid_item_id;
+    const bankCanActivate = accounts.some(a => a.status === 'available');
+    const activateBtn = bankCanActivate ? `<button class="activate-btn" onclick="syncItem('${bankItemId}', true)">Activate & Sync</button>` : '';
+
+    html += `
+      <div class="account-group">
+        <div style="display: flex; align-items: center; margin-bottom: 5px; gap: 8px; flex-wrap: wrap;">
+          <label style="display: flex; align-items: center; gap: 6px;">
+            <input type="checkbox" class="bank-checkbox" data-bank="${bank}" ${allDisabled ? 'disabled' : ''}>
+            <strong>${bank}</strong>
+          </label>
+          ${bankStatusBadge}
+          ${activateBtn}
+        </div>
+    `;
+
+    accounts.forEach(acc => {
+      const disabled = acc.status !== 'active';
+      const displayName = `${acc.account_name || 'Account'}${acc.mask ? ' ...' + acc.mask : ''}`;
+      const statusBadge = accountStatusLabel(acc.status);
+      html += `
+        <div class="account-item">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 6px;">
+              <input type="checkbox" class="account-checkbox" data-bank="${bank}" data-account-id="${acc.plaid_account_id}" ${disabled ? 'disabled' : ''}>
+              ${displayName}
+            </label>
+            ${statusBadge}
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div>';
+  });
+
+  container.html(html);
+}
+
+function bankStatusLabel(acc) {
+  if (!acc) return '';
+  if (acc.status === 'active') return '<span class="status-badge status-active">Active</span>';
+  if (acc.status === 'available') return '<span class="status-badge status-inactive">Available (Not Active)</span>';
+  return '<span class="status-badge status-inactive">Inactive</span>';
+}
+
+function accountStatusLabel(status) {
+  if (status === 'active') return '<span class="status-badge status-active">Active</span>';
+  if (status === 'available') return '<span class="status-badge status-inactive">Available (Not Active)</span>';
+  return '<span class="status-badge status-inactive">Inactive</span>';
+}
+
+function getSelectedAccounts() {
+  const selected = [];
+  $('.account-checkbox:checked').each(function() {
+    selected.push($(this).data('account-id'));
+  });
+  return selected;
+}
+
+function selectAllAccounts() {
+  $('.account-checkbox:not(:disabled)').prop('checked', true);
+  $('.bank-checkbox:not(:disabled)').prop('checked', true);
+  renderTable();
+}
+
+function deselectAllAccounts() {
+  $('.account-checkbox').prop('checked', false);
+  $('.bank-checkbox').prop('checked', false);
+  renderTable();
+}
+
+function toggleBank(bank, isChecked) {
+  const accountCheckboxes = $(`.account-checkbox[data-bank="${bank}"]:not(:disabled)`);
+  accountCheckboxes.prop('checked', isChecked);
+  renderTable();
+}
+
+async function refreshAccounts() {
+  try {
+    showMessage('Refreshing accounts...', 'info');
+    await loadAccounts();
+    // Keep existing holdings in memory; optionally reload to reflect new activations
+    await loadHoldings();
+    showMessage('Accounts refreshed successfully', 'success');
+  } catch (error) {
+    console.error('refreshAccounts error:', error);
+    showMessage(`Failed to refresh accounts: ${error.message}`, 'error');
+  }
 }
 
 async function loadAccountStatus() {
@@ -236,16 +380,30 @@ function renderAccountStatus() {
 function renderTable() {
   const container = $('#table-container');
   
+  const selectedAccounts = getSelectedAccounts();
+  // If nothing selected, show hint
+  if (selectedAccounts.length === 0) {
+    container.html('<div class="empty-state">Select at least one investment account to view holdings.</div>');
+    return;
+  }
+
+  // Filter holdings by selected accounts
+  const filteredHoldings = holdingsData.filter(item => 
+    !item.plaid_account_id || selectedAccounts.includes(item.plaid_account_id)
+  );
+
   // Flatten and Group Holdings
   const groupedHoldings = {}; // Key: ticker_symbol or name
   
-  holdingsData.forEach(item => {
+  filteredHoldings.forEach(item => {
     if (!item || !item.holdings || !item.securities) return;
     
     item.holdings.forEach(holding => {
       // Find security info
       const security = item.securities.find(s => s.security_id === holding.security_id);
       if (!security) return;
+
+      const price = derivePrice(security, holding);
       
       const key = security.ticker_symbol || security.name;
       if (!groupedHoldings[key]) {
@@ -253,25 +411,21 @@ function renderTable() {
           ticker: security.ticker_symbol,
           name: security.name,
           type: security.type,
-          price: security.close_price || security.close_price_as_of ? (security.close_price || 0) : 0, // Simplified price logic
+          price: price,
           total_quantity: 0,
           total_value: 0,
           total_cost: 0,
           holdings: []
         };
+      } else if (!groupedHoldings[key].price && price) {
+        groupedHoldings[key].price = price;
       }
       
       const quantity = holding.quantity;
-      const price = security.close_price || 0; // Use close price if current price not available
-      const value = holding.institution_value || (quantity * price);
-      const cost = holding.cost_basis || 0;
+      const value = price > 0 ? (quantity * price) : (holding.institution_value || 0); // Display-only
       
       groupedHoldings[key].total_quantity += quantity;
       groupedHoldings[key].total_value += value;
-      groupedHoldings[key].total_cost += (cost * quantity); // Cost basis is usually per share? No, Plaid says 'cost_basis' is "The total cost of the holding". Wait, let's check docs.
-      // Plaid docs: cost_basis "The total cost of the holding." (Total value, not per share).
-      // But sometimes it's per share? "The original total value...".
-      // Actually, let's assume it's total cost for now.
       
       // Find account name (payload is per-account; fallback to embedded account)
       const accountName = (item.account && item.account.name) || (item.account && item.account.official_name) || 'Unknown Account';
@@ -281,20 +435,21 @@ function renderTable() {
         account: accountName,
         quantity: quantity,
         value: value,
-        cost_basis: cost,
         price: price
       });
     });
   });
   
   if (Object.keys(groupedHoldings).length === 0) {
-    container.html('<div class="empty-state">No holdings found. Sync your accounts to see data.</div>');
+    container.html('<div class="empty-state">No holdings found for selected accounts. Sync or adjust selections.</div>');
     return;
   }
   
   // Build Table
   const optionalFields = [];
   $('.field-checkbox:checked').each(function() { optionalFields.push($(this).val()); });
+  // Do not show cost basis column anywhere
+  const filteredOptional = optionalFields.filter(f => f !== 'cost_basis');
   
   let tableHtml = `
     <table class="transactions-table">
@@ -306,22 +461,13 @@ function renderTable() {
           <th>Price</th>
           <th>Total Qty</th>
           <th>Total Value</th>
-          <th>Avg Cost</th>
-          <th>Gain/Loss</th>
-          ${optionalFields.map(f => `<th>${formatFieldName(f)}</th>`).join('')}
+          ${filteredOptional.map(f => `<th>${formatFieldName(f)}</th>`).join('')}
         </tr>
       </thead>
       <tbody>
   `;
   
   Object.values(groupedHoldings).forEach((group, index) => {
-    const avgCost = group.total_quantity > 0 ? (group.total_cost / group.total_quantity) : 0; // Wait, if cost_basis is total, then total_cost is sum of cost_bases.
-    // Actually, let's just display Total Cost Basis if requested, or calculate Gain %.
-    
-    const totalGain = group.total_value - group.total_cost;
-    const gainPercent = group.total_cost > 0 ? ((totalGain / group.total_cost) * 100) : 0;
-    const gainClass = totalGain >= 0 ? 'positive-gain' : 'negative-gain';
-    
     const hasMultiple = group.holdings.length > 0; // Always true if it exists
     
     tableHtml += `
@@ -332,18 +478,12 @@ function renderTable() {
         <td>${formatCurrency(group.price)}</td>
         <td>${group.total_quantity.toFixed(4)}</td>
         <td>${formatCurrency(group.total_value)}</td>
-        <td>${formatCurrency(group.total_cost)}</td> <!-- Displaying Total Cost instead of Avg for now -->
-        <td class="${gainClass}">${gainPercent.toFixed(2)}%</td>
-        ${optionalFields.map(f => `<td>-</td>`).join('')}
+        ${filteredOptional.map(f => `<td>-</td>`).join('')}
       </tr>
     `;
     
     // Detail Rows
     group.holdings.forEach(h => {
-      const hGain = h.value - h.cost_basis;
-      const hGainPercent = h.cost_basis > 0 ? ((hGain / h.cost_basis) * 100) : 0;
-      const hGainClass = hGain >= 0 ? 'positive-gain' : 'negative-gain';
-      
       tableHtml += `
         <tr class="holding-detail-row group-${index}">
           <td></td>
@@ -351,9 +491,7 @@ function renderTable() {
           <td>${formatCurrency(h.price)}</td>
           <td>${h.quantity.toFixed(4)}</td>
           <td>${formatCurrency(h.value)}</td>
-          <td>${formatCurrency(h.cost_basis)}</td>
-          <td class="${hGainClass}">${hGainPercent.toFixed(2)}%</td>
-          ${optionalFields.map(f => `<td>${formatOptionalField(h, f)}</td>`).join('')}
+          ${filteredOptional.map(f => `<td>${formatOptionalField(h, f)}</td>`).join('')}
         </tr>
       `;
     });
@@ -368,6 +506,22 @@ function renderTable() {
 function toggleGroup(groupId, headerRow) {
   $(`.${groupId}`).toggleClass('expanded');
   $(headerRow).toggleClass('expanded');
+}
+
+// Price fallback helper: prefer security prices; fall back to holding prices or implied from institution_value
+function derivePrice(security, holding) {
+  const candidates = [
+    security.close_price,
+    security.price,
+    security.institution_price,
+    holding.institution_price,
+    holding.price
+  ];
+  let price = candidates.find(v => v !== null && v !== undefined && Number.isFinite(v) && v > 0);
+  if (!price && holding.institution_value && holding.quantity) {
+    price = holding.quantity !== 0 ? (holding.institution_value / holding.quantity) : 0;
+  }
+  return price || 0;
 }
 
 function toggleConfig() {

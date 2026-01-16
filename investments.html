@@ -26,13 +26,16 @@
       </div>
       <div class="config-content" id="config-content">
         
-        <!-- Bank & Account Status -->
+        <!-- Investment Account Selection -->
         <div class="config-section">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <h3 style="margin: 0;">Investment Accounts Status</h3>
+          <div style="display: flex; justify-content: flex-start; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
+            <h3 style="margin: 0;">Select Investment Accounts</h3>
+            <button onclick="selectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Select All</button>
+            <button onclick="deselectAllAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Deselect All</button>
             <button onclick="refreshAccounts()" class="secondary" style="padding: 4px 8px; font-size: 12px;">Refresh List</button>
           </div>
-          <div id="account-status-list">Loading accounts...</div>
+          <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Only investment accounts are shown. Activate investments for a bank to include its accounts.</p>
+          <div id="account-selector"></div>
         </div>
 
         <!-- Optional Fields -->
