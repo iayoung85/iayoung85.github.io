@@ -145,3 +145,25 @@
   background-color: #f8d7da;
   color: #721c24;
 }
+/* Action bar above table */
+.action-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 20px 0;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  flex-wrap: wrap;
+}
+
+.action-bar button {
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.action-bar .export-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

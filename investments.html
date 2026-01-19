@@ -36,23 +36,21 @@
           <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">Only investment accounts are shown. Activate investments for a bank to include its accounts.</p>
           <div id="account-selector"></div>
         </div>
-
-        <!-- Action Buttons -->
-        <div class="config-section">
-          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
-            <button onclick="syncAllHoldings()">Sync All Holdings</button>
-            
-            <!-- Export Buttons -->
-            <div id="export-buttons" class="export-buttons">
-              <button onclick="exportJSON()" class="secondary">Export JSON</button>
-              <button onclick="copyCSV()" class="secondary">Copy CSV</button>
-              <button onclick="downloadCSV()" class="secondary">Download CSV</button>
-            </div>
-          </div>
-          <div id="status-message"></div>
-        </div>
         
       </div>
+    </div>
+    
+    <!-- Action Bar (above table) -->
+    <div class="action-bar">
+      <button onclick="syncAllHoldings()">Sync All Holdings</button>
+      
+      <!-- Export Buttons -->
+      <div id="export-buttons" class="export-buttons">
+        <button onclick="exportJSON()" class="secondary">Export JSON</button>
+        <button onclick="copyCSV()" class="secondary">Copy CSV</button>
+        <button onclick="downloadCSV()" class="secondary">Download CSV</button>
+      </div>
+      <div id="status-message"></div>
     </div>
     
     <!-- Holdings Table -->
