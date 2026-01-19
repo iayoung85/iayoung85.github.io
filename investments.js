@@ -1,11 +1,21 @@
 // BACKEND_URL is defined in config.js
 
 let holdingsData = [];
+let securitiesData = [];
 let accountStatus = [];
 let investmentAccounts = [];
 let currentUser = null;
 let authToken = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
+
+const CACHE_KEY = 'investmentHoldingsCache';
+const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+
+const ACCOUNTS_CACHE_KEY = 'investmentAccountsCache';
+const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+
+const ACCOUNTS_STATUS_CACHE_KEY = 'investmentAccountsStatusCache';
+const ACCOUNTS_STATUS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Auth Check
 if (!authToken) {
@@ -81,11 +91,21 @@ async function loadAccounts() {
   const container = $('#account-selector');
   container.html('<div class="status-message info">Loading accounts...</div>');
   try {
+    // Check cache first
+    const cached = getCachedAccounts();
+    if (cached) {
+      investmentAccounts = cached;
+      renderAccountSelector();
+      selectAllAccounts();
+      return;
+    }
+
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts/all`);
     const data = await response.json();
     if (data.error) throw new Error(data.error);
 
     investmentAccounts = data.accounts || [];
+    setCachedAccounts(investmentAccounts);
     renderAccountSelector();
     // Auto-select all active/available accounts
     selectAllAccounts();
@@ -182,9 +202,18 @@ function deselectAllAccounts() {
 
 async function loadAccountStatus() {
   try {
+    // Check cache first
+    const cached = getCachedAccountStatus();
+    if (cached) {
+      accountStatus = cached;
+      renderAccountStatus();
+      return;
+    }
+
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts_status`);
     const data = await response.json();
     accountStatus = data.items;
+    setCachedAccountStatus(accountStatus);
     renderAccountStatus();
   } catch (error) {
     console.error('Error loading account status:', error);
@@ -194,12 +223,147 @@ async function loadAccountStatus() {
   }
 }
 
-async function loadHoldings() {
+function getCachedHoldings() {
+  try {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (!cached) return null;
+    
+    const { timestamp, data } = JSON.parse(cached);
+    const age = Date.now() - timestamp;
+    
+    if (age < CACHE_DURATION) {
+      return data;
+    }
+    
+    // Cache expired
+    localStorage.removeItem(CACHE_KEY);
+    return null;
+  } catch (e) {
+    console.error('Error reading cache:', e);
+    localStorage.removeItem(CACHE_KEY);
+    return null;
+  }
+}
+
+function setCachedHoldings(data) {
+  try {
+    const cacheObj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cacheObj));
+  } catch (e) {
+    console.error('Error setting cache:', e);
+  }
+}
+
+function clearHoldingsCache() {
+  localStorage.removeItem(CACHE_KEY);
+}
+
+function getCachedAccounts() {
+  try {
+    const cached = localStorage.getItem(ACCOUNTS_CACHE_KEY);
+    if (!cached) return null;
+    
+    const { timestamp, data } = JSON.parse(cached);
+    const age = Date.now() - timestamp;
+    
+    if (age < ACCOUNTS_CACHE_DURATION) {
+      return data;
+    }
+    
+    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
+    return null;
+  } catch (e) {
+    console.error('Error reading accounts cache:', e);
+    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
+    return null;
+  }
+}
+
+function setCachedAccounts(data) {
+  try {
+    const cacheObj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    localStorage.setItem(ACCOUNTS_CACHE_KEY, JSON.stringify(cacheObj));
+  } catch (e) {
+    console.error('Error setting accounts cache:', e);
+  }
+}
+
+function clearAccountsCache() {
+  localStorage.removeItem(ACCOUNTS_CACHE_KEY);
+}
+
+function getCachedAccountStatus() {
+  try {
+    const cached = localStorage.getItem(ACCOUNTS_STATUS_CACHE_KEY);
+    if (!cached) return null;
+    
+    const { timestamp, data } = JSON.parse(cached);
+    const age = Date.now() - timestamp;
+    
+    if (age < ACCOUNTS_STATUS_CACHE_DURATION) {
+      return data;
+    }
+    
+    localStorage.removeItem(ACCOUNTS_STATUS_CACHE_KEY);
+    return null;
+  } catch (e) {
+    console.error('Error reading account status cache:', e);
+    localStorage.removeItem(ACCOUNTS_STATUS_CACHE_KEY);
+    return null;
+  }
+}
+
+function setCachedAccountStatus(data) {
+  try {
+    const cacheObj = {
+      timestamp: Date.now(),
+      data: data
+    };
+    localStorage.setItem(ACCOUNTS_STATUS_CACHE_KEY, JSON.stringify(cacheObj));
+  } catch (e) {
+    console.error('Error setting account status cache:', e);
+  }
+}
+
+function clearAccountStatusCache() {
+  localStorage.removeItem(ACCOUNTS_STATUS_CACHE_KEY);
+}
+
+function clearAllCaches() {
+  clearHoldingsCache();
+  clearAccountsCache();
+  clearAccountStatusCache();
+}
+
+async function loadHoldings(skipCache = false) {
   $('#table-container').html('<div class="empty-state">Loading holdings...</div>');
   try {
+    // Try cache first unless explicitly skipped
+    if (!skipCache) {
+      const cached = getCachedHoldings();
+      if (cached) {
+        holdingsData = cached.items || [];
+        securitiesData = cached.securities || [];
+        renderTable();
+        return;
+      }
+    }
+    
+    // Fetch from backend
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/holdings`);
     const data = await response.json();
-    holdingsData = data.items; // Array of item objects with holdings
+    holdingsData = data.items || [];
+    securitiesData = data.securities || [];
+    
+    // Cache the response
+    setCachedHoldings(data);
+    
     renderTable();
   } catch (error) {
     console.error('Error loading holdings:', error);
@@ -228,10 +392,11 @@ async function syncItem(itemId, activate = false) {
     const responseData = await response.json();
     
     if (response.ok) {
-      // Refresh all data
+      // Clear all caches and refresh all data
+      clearAllCaches();
       await loadAccounts(); 
       await loadAccountStatus(); 
-      await loadHoldings();
+      await loadHoldings(true); // Skip cache
       showMessage(activate ? 'Activated successfully' : 'Synced successfully', 'success');
     } else {
       alert('Sync failed: ' + responseData.error);
@@ -273,7 +438,9 @@ async function syncAllHoldings() {
     }
   }
   
-  await loadHoldings();
+  // Clear all caches and reload
+  clearAllCaches();
+  await loadHoldings(true); // Skip cache
   showMessage(`Synced ${successCount}/${activeItems.length} accounts`, 'success');
 }
 
@@ -434,49 +601,62 @@ function formatDate(isoString) {
 
 // Build grouped holdings (collapsed view) for selected accounts
 function buildGroupedHoldings(selectedAccounts) {
-  // Filter holdings by selected accounts
-  const filteredHoldings = holdingsData.filter(item => 
-    !item.plaid_account_id || selectedAccounts.includes(item.plaid_account_id)
-  );
-
   const grouped = {}; // Key: ticker_symbol or name
   
-  filteredHoldings.forEach(item => {
-    if (!item || !item.holdings || !item.securities) return;
+  // Helper to lookup security by security_id
+  const getSecurityById = (securityId) => {
+    return securitiesData.find(s => s.security_id === securityId);
+  };
+  
+  // Process each item's holdings
+  holdingsData.forEach(item => {
+    if (!item || !item.holdings || !item.accounts) return;
     
-    item.holdings.forEach(holding => {
-      const security = item.securities.find(s => s.security_id === holding.security_id);
-      if (!security) return;
-
-      const price = derivePrice(security, holding);
-      const key = security.ticker_symbol || security.name;
-
-      if (!grouped[key]) {
-        grouped[key] = {
-          ticker: security.ticker_symbol,
-          name: security.name,
-          type: security.type,
-          price: price,
-          total_quantity: 0,
-          total_value: 0,
-          holdings: []
-        };
-      } else if (!grouped[key].price && price) {
-        grouped[key].price = price;
-      }
+    const itemInstitution = item.institution_name || 'Unknown';
+    
+    // Get investment accounts from this item
+    const investmentAccounts = item.accounts.filter(acc => 
+      acc.type === 'investment' && selectedAccounts.includes(acc.account_id)
+    );
+    
+    investmentAccounts.forEach(account => {
+      // Get holdings for this account
+      const accountHoldings = item.holdings.filter(h => h.account_id === account.account_id);
       
-      const quantity = holding.quantity;
-      const value = price > 0 ? (quantity * price) : (holding.institution_value || 0);
-      grouped[key].total_quantity += quantity;
-      grouped[key].total_value += value;
-      
-      const accountName = (item.account && item.account.name) || (item.account && item.account.official_name) || 'Unknown Account';
-      grouped[key].holdings.push({
-        bank: item.institution_name,
-        account: accountName,
-        quantity,
-        value,
-        price
+      accountHoldings.forEach(holding => {
+        const security = getSecurityById(holding.security_id);
+        if (!security) return;
+
+        const price = derivePrice(security, holding);
+        const key = security.ticker_symbol || security.name;
+
+        if (!grouped[key]) {
+          grouped[key] = {
+            ticker: security.ticker_symbol,
+            name: security.name,
+            type: security.type,
+            price: price,
+            total_quantity: 0,
+            total_value: 0,
+            holdings: []
+          };
+        } else if (!grouped[key].price && price) {
+          grouped[key].price = price;
+        }
+        
+        const quantity = holding.quantity;
+        const value = price > 0 ? (quantity * price) : (holding.institution_value || 0);
+        grouped[key].total_quantity += quantity;
+        grouped[key].total_value += value;
+        
+        const accountName = account.name || account.official_name || 'Unknown Account';
+        grouped[key].holdings.push({
+          bank: itemInstitution,
+          account: accountName,
+          quantity,
+          value,
+          price
+        });
       });
     });
   });
@@ -484,10 +664,49 @@ function buildGroupedHoldings(selectedAccounts) {
   return Object.values(grouped);
 }
 
-// Collect the full Plaid payload (accounts, holdings, securities) for export
+// Collect the full Plaid payload with enriched holdings (holdings + securities joined) for export
 function buildRawHoldingsExport(selectedAccounts) {
   if (!holdingsData || holdingsData.length === 0) return [];
-  return holdingsData.filter(item => !item.plaid_account_id || selectedAccounts.includes(item.plaid_account_id));
+  
+  const getSecurityById = (securityId) => {
+    return securitiesData.find(s => s.security_id === securityId) || {};
+  };
+  
+  const exportData = [];
+  
+  holdingsData.forEach(item => {
+    if (!item || !item.holdings || !item.accounts) return;
+    
+    // Filter to selected investment accounts
+    const selectedInvestmentAccounts = item.accounts.filter(acc => 
+      acc.type === 'investment' && selectedAccounts.includes(acc.account_id)
+    );
+    
+    if (selectedInvestmentAccounts.length === 0) return;
+    
+    // Create enriched holdings for this item
+    const enrichedHoldings = item.holdings
+      .filter(h => selectedInvestmentAccounts.some(acc => acc.account_id === h.account_id))
+      .map(holding => {
+        const security = getSecurityById(holding.security_id);
+        return {
+          ...holding,
+          security: security
+        };
+      });
+    
+    exportData.push({
+      plaid_item_id: item.plaid_item_id,
+      institution_name: item.institution_name,
+      accounts: selectedInvestmentAccounts,
+      holdings: enrichedHoldings,
+      item: item.item,
+      last_updated: item.last_updated,
+      request_id: item.request_id
+    });
+  });
+  
+  return exportData;
 }
 
 function showMessage(msg, type) {
