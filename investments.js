@@ -23,21 +23,12 @@ $(document).ready(async function() {
   
   // Load accounts first so selections exist
   await loadAccounts();
-  await loadSettings();
+  await loadAccountStatus(); // Populate accountStatus for Sync All Holdings button
   await loadHoldings();
 
-  // Wire optional field changes to re-render
-  $(document).on('change', '.field-checkbox', function() {
-    renderTable();
-  });
   // Account selection changes
   $(document).on('change', '.account-checkbox', function() {
     renderTable();
-  });
-  // Bank-level checkbox toggle
-  $(document).on('change', '.bank-checkbox', function() {
-    const bank = $(this).data('bank');
-    toggleBank(bank, $(this).prop('checked'));
   });
 });
 
@@ -110,64 +101,58 @@ function renderAccountSelector() {
     return;
   }
 
-  // Group accounts by institution
-  const grouped = {};
+  // Group accounts by plaid_item_id to handle activate buttons
+  const groupedByItem = {};
   investmentAccounts.forEach(acc => {
-    const key = acc.institution_name || 'Unknown Institution';
-    if (!grouped[key]) grouped[key] = [];
-    grouped[key].push(acc);
+    const itemId = acc.plaid_item_id;
+    if (!groupedByItem[itemId]) groupedByItem[itemId] = [];
+    groupedByItem[itemId].push(acc);
   });
 
-  let html = '';
-  Object.keys(grouped).forEach(bank => {
-    const accounts = grouped[bank];
-    const allDisabled = accounts.every(a => a.status !== 'active');
-    const bankStatusBadge = bankStatusLabel(accounts[0]);
-    const bankItemId = accounts[0].plaid_item_id;
-    const bankCanActivate = accounts.some(a => a.status === 'available');
-    const activateBtn = bankCanActivate ? `<button class="activate-btn" onclick="syncItem('${bankItemId}', true)">Activate & Sync</button>` : '';
-
-    html += `
-      <div class="account-group">
-        <div style="display: flex; align-items: center; margin-bottom: 5px; gap: 8px; flex-wrap: wrap;">
-          <label style="display: flex; align-items: center; gap: 6px;">
-            <input type="checkbox" class="bank-checkbox" data-bank="${bank}" ${allDisabled ? 'disabled' : ''}>
-            <strong>${bank}</strong>
-          </label>
-          ${bankStatusBadge}
-          ${activateBtn}
-        </div>
-    `;
-
+  let html = '<div class="account-list">';
+  
+  Object.keys(groupedByItem).forEach(itemId => {
+    const accounts = groupedByItem[itemId];
+    const canActivate = accounts.some(a => a.status === 'available');
+    const allActive = accounts.every(a => a.status === 'active');
+    
+    html += '<div class="item-group">';
+    html += '<div class="accounts-column">';
+    
     accounts.forEach(acc => {
       const disabled = acc.status !== 'active';
-      const displayName = `${acc.account_name || 'Account'}${acc.mask ? ' ...' + acc.mask : ''}`;
+      const institutionName = acc.institution_name || 'Unknown Institution';
+      const accountName = acc.account_name || 'Account';
+      const maskDisplay = acc.mask ? ` ...${acc.mask}` : '';
       const statusBadge = accountStatusLabel(acc.status);
+      
       html += `
-        <div class="account-item">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label style="display: flex; align-items: center; gap: 6px;">
-              <input type="checkbox" class="account-checkbox" data-bank="${bank}" data-account-id="${acc.plaid_account_id}" ${disabled ? 'disabled' : ''}>
-              ${displayName}
-            </label>
-            ${statusBadge}
-          </div>
+        <div class="account-row">
+          <label>
+            <input type="checkbox" class="account-checkbox" data-account-id="${acc.plaid_account_id}" ${disabled ? 'disabled' : ''}>
+            <span class="bank-name">${institutionName}</span>
+            <span class="account-name">${accountName}${maskDisplay}</span>
+          </label>
+          ${statusBadge}
         </div>
       `;
     });
-
+    
+    html += '</div>';
+    
+    // Add Activate & Sync button if applicable
+    if (canActivate && !allActive) {
+      html += `<button class="activate-btn" data-item="${itemId}" onclick="syncItem('${itemId}', true)">Activate & Sync</button>`;
+    }
+    
     html += '</div>';
   });
-
+  
+  html += '</div>';
   container.html(html);
 }
 
-function bankStatusLabel(acc) {
-  if (!acc) return '';
-  if (acc.status === 'active') return '<span class="status-badge status-active">Active</span>';
-  if (acc.status === 'available') return '<span class="status-badge status-inactive">Available (Not Active)</span>';
-  return '<span class="status-badge status-inactive">Inactive</span>';
-}
+
 
 function accountStatusLabel(status) {
   if (status === 'active') return '<span class="status-badge status-active">Active</span>';
@@ -185,44 +170,27 @@ function getSelectedAccounts() {
 
 function selectAllAccounts() {
   $('.account-checkbox:not(:disabled)').prop('checked', true);
-  $('.bank-checkbox:not(:disabled)').prop('checked', true);
   renderTable();
 }
 
 function deselectAllAccounts() {
   $('.account-checkbox').prop('checked', false);
-  $('.bank-checkbox').prop('checked', false);
   renderTable();
 }
 
-function toggleBank(bank, isChecked) {
-  const accountCheckboxes = $(`.account-checkbox[data-bank="${bank}"]:not(:disabled)`);
-  accountCheckboxes.prop('checked', isChecked);
-  renderTable();
-}
 
-async function refreshAccounts() {
-  try {
-    showMessage('Refreshing accounts...', 'info');
-    await loadAccounts();
-    // Keep existing holdings in memory; optionally reload to reflect new activations
-    await loadHoldings();
-    showMessage('Accounts refreshed successfully', 'success');
-  } catch (error) {
-    console.error('refreshAccounts error:', error);
-    showMessage(`Failed to refresh accounts: ${error.message}`, 'error');
-  }
-}
 
 async function loadAccountStatus() {
-  $('#account-status-list').html('Loading...');
   try {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/accounts_status`);
     const data = await response.json();
     accountStatus = data.items;
     renderAccountStatus();
   } catch (error) {
-    $('#account-status-list').html(`<div class="error">Error loading status: ${error.message}</div>`);
+    console.error('Error loading account status:', error);
+    if (document.getElementById('account-status-list')) {
+      $('#account-status-list').html(`<div class="error">Error loading status: ${error.message}</div>`);
+    }
   }
 }
 
@@ -234,6 +202,7 @@ async function loadHoldings() {
     holdingsData = data.items; // Array of item objects with holdings
     renderTable();
   } catch (error) {
+    console.error('Error loading holdings:', error);
     $('#table-container').html(`<div class="error">Error loading holdings: ${error.message}</div>`);
   }
 }
@@ -256,41 +225,51 @@ async function syncItem(itemId, activate = false) {
       })
     });
     
+    const responseData = await response.json();
+    
     if (response.ok) {
-      // Refresh data
-      await loadAccountStatus();
+      // Refresh all data
+      await loadAccounts(); 
+      await loadAccountStatus(); 
       await loadHoldings();
       showMessage(activate ? 'Activated successfully' : 'Synced successfully', 'success');
     } else {
-      const err = await response.json();
-      alert('Sync failed: ' + err.error);
+      alert('Sync failed: ' + responseData.error);
+      btn.prop('disabled', false).text(originalText);
     }
-    
-    btn.prop('disabled', false).text(originalText);
   } catch (error) {
+    console.error('Sync error:', error);
     alert('Sync error: ' + error.message);
+    const btn = $(`button[data-item="${itemId}"]`);
+    btn.prop('disabled', false).text('Activate & Sync');
   }
 }
 
 async function syncAllHoldings() {
   const activeItems = accountStatus.filter(i => i.status === 'active');
+  
   if (activeItems.length === 0) {
     alert('No active investment accounts found.');
     return;
   }
   
-  if (!confirm(`Syncing ${activeItems.length} accounts. This may take a moment.`)) return;
+  if (!confirm(`Syncing ${activeItems.length} active bank connections. This may take a moment.`)) return;
   
   let successCount = 0;
   for (const item of activeItems) {
     try {
-      await authenticatedFetch(`${BACKEND_URL}/api/investments/sync`, {
+      const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/sync`, {
         method: 'POST',
         body: JSON.stringify({ item_id: item.plaid_item_id })
       });
-      successCount++;
+      if (response.ok) {
+        successCount++;
+      } else {
+        const err = await response.json();
+        console.error(`Sync failed for ${item.institution_name}:`, err);
+      }
     } catch (e) {
-      console.error(`Failed to sync ${item.institution_name}`, e);
+      console.error(`Failed to sync ${item.institution_name}:`, e);
     }
   }
   
@@ -298,41 +277,6 @@ async function syncAllHoldings() {
   showMessage(`Synced ${successCount}/${activeItems.length} accounts`, 'success');
 }
 
-async function loadSettings() {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/investments/settings`);
-    if (response.ok) {
-      const settings = await response.json();
-      // Apply settings (checkboxes)
-      if (settings.optional_fields) {
-        const fields = settings.optional_fields;
-        $('.field-checkbox').each(function() {
-          $(this).prop('checked', fields.includes($(this).val()));
-        });
-        // Re-render if data exists
-        if (holdingsData.length > 0) renderTable();
-      }
-    }
-  } catch (e) { console.error(e); }
-}
-
-async function saveSettings() {
-  const optionalFields = [];
-  $('.field-checkbox:checked').each(function() {
-    optionalFields.push($(this).val());
-  });
-  
-  try {
-    await authenticatedFetch(`${BACKEND_URL}/api/investments/settings`, {
-      method: 'POST',
-      body: JSON.stringify({ optional_fields: optionalFields })
-    });
-    showMessage('Settings saved', 'success');
-    renderTable(); // Re-render to show/hide columns
-  } catch (e) {
-    alert('Failed to save settings');
-  }
-}
 
 // --- Rendering ---
 
@@ -387,70 +331,14 @@ function renderTable() {
     return;
   }
 
-  // Filter holdings by selected accounts
-  const filteredHoldings = holdingsData.filter(item => 
-    !item.plaid_account_id || selectedAccounts.includes(item.plaid_account_id)
-  );
+  const groupedHoldings = buildGroupedHoldings(selectedAccounts);
 
-  // Flatten and Group Holdings
-  const groupedHoldings = {}; // Key: ticker_symbol or name
-  
-  filteredHoldings.forEach(item => {
-    if (!item || !item.holdings || !item.securities) return;
-    
-    item.holdings.forEach(holding => {
-      // Find security info
-      const security = item.securities.find(s => s.security_id === holding.security_id);
-      if (!security) return;
-
-      const price = derivePrice(security, holding);
-      
-      const key = security.ticker_symbol || security.name;
-      if (!groupedHoldings[key]) {
-        groupedHoldings[key] = {
-          ticker: security.ticker_symbol,
-          name: security.name,
-          type: security.type,
-          price: price,
-          total_quantity: 0,
-          total_value: 0,
-          total_cost: 0,
-          holdings: []
-        };
-      } else if (!groupedHoldings[key].price && price) {
-        groupedHoldings[key].price = price;
-      }
-      
-      const quantity = holding.quantity;
-      const value = price > 0 ? (quantity * price) : (holding.institution_value || 0); // Display-only
-      
-      groupedHoldings[key].total_quantity += quantity;
-      groupedHoldings[key].total_value += value;
-      
-      // Find account name (payload is per-account; fallback to embedded account)
-      const accountName = (item.account && item.account.name) || (item.account && item.account.official_name) || 'Unknown Account';
-      
-      groupedHoldings[key].holdings.push({
-        bank: item.institution_name,
-        account: accountName,
-        quantity: quantity,
-        value: value,
-        price: price
-      });
-    });
-  });
-  
-  if (Object.keys(groupedHoldings).length === 0) {
+  if (groupedHoldings.length === 0) {
     container.html('<div class="empty-state">No holdings found for selected accounts. Sync or adjust selections.</div>');
     return;
   }
   
   // Build Table
-  const optionalFields = [];
-  $('.field-checkbox:checked').each(function() { optionalFields.push($(this).val()); });
-  // Do not show cost basis column anywhere
-  const filteredOptional = optionalFields.filter(f => f !== 'cost_basis');
-  
   let tableHtml = `
     <table class="transactions-table">
       <thead>
@@ -461,13 +349,12 @@ function renderTable() {
           <th>Price</th>
           <th>Total Qty</th>
           <th>Total Value</th>
-          ${filteredOptional.map(f => `<th>${formatFieldName(f)}</th>`).join('')}
         </tr>
       </thead>
       <tbody>
   `;
   
-  Object.values(groupedHoldings).forEach((group, index) => {
+  groupedHoldings.forEach((group, index) => {
     const hasMultiple = group.holdings.length > 0; // Always true if it exists
     
     tableHtml += `
@@ -478,7 +365,6 @@ function renderTable() {
         <td>${formatCurrency(group.price)}</td>
         <td>${group.total_quantity.toFixed(4)}</td>
         <td>${formatCurrency(group.total_value)}</td>
-        ${filteredOptional.map(f => `<td>-</td>`).join('')}
       </tr>
     `;
     
@@ -491,7 +377,6 @@ function renderTable() {
           <td>${formatCurrency(h.price)}</td>
           <td>${h.quantity.toFixed(4)}</td>
           <td>${formatCurrency(h.value)}</td>
-          ${filteredOptional.map(f => `<td>${formatOptionalField(h, f)}</td>`).join('')}
         </tr>
       `;
     });
@@ -547,15 +432,62 @@ function formatDate(isoString) {
   return new Date(isoString).toLocaleString();
 }
 
-function formatFieldName(field) {
-  return field.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+// Build grouped holdings (collapsed view) for selected accounts
+function buildGroupedHoldings(selectedAccounts) {
+  // Filter holdings by selected accounts
+  const filteredHoldings = holdingsData.filter(item => 
+    !item.plaid_account_id || selectedAccounts.includes(item.plaid_account_id)
+  );
+
+  const grouped = {}; // Key: ticker_symbol or name
+  
+  filteredHoldings.forEach(item => {
+    if (!item || !item.holdings || !item.securities) return;
+    
+    item.holdings.forEach(holding => {
+      const security = item.securities.find(s => s.security_id === holding.security_id);
+      if (!security) return;
+
+      const price = derivePrice(security, holding);
+      const key = security.ticker_symbol || security.name;
+
+      if (!grouped[key]) {
+        grouped[key] = {
+          ticker: security.ticker_symbol,
+          name: security.name,
+          type: security.type,
+          price: price,
+          total_quantity: 0,
+          total_value: 0,
+          holdings: []
+        };
+      } else if (!grouped[key].price && price) {
+        grouped[key].price = price;
+      }
+      
+      const quantity = holding.quantity;
+      const value = price > 0 ? (quantity * price) : (holding.institution_value || 0);
+      grouped[key].total_quantity += quantity;
+      grouped[key].total_value += value;
+      
+      const accountName = (item.account && item.account.name) || (item.account && item.account.official_name) || 'Unknown Account';
+      grouped[key].holdings.push({
+        bank: item.institution_name,
+        account: accountName,
+        quantity,
+        value,
+        price
+      });
+    });
+  });
+
+  return Object.values(grouped);
 }
 
-function formatOptionalField(holding, field) {
-  if (field === 'iso_currency_code') return holding.iso_currency_code || 'USD';
-  if (field === 'cost_basis') return formatCurrency(holding.cost_basis);
-  if (field === 'institution_value') return formatCurrency(holding.value);
-  return holding[field] || '-';
+// Collect the full Plaid payload (accounts, holdings, securities) for export
+function buildRawHoldingsExport(selectedAccounts) {
+  if (!holdingsData || holdingsData.length === 0) return [];
+  return holdingsData.filter(item => !item.plaid_account_id || selectedAccounts.includes(item.plaid_account_id));
 }
 
 function showMessage(msg, type) {
@@ -566,23 +498,85 @@ function showMessage(msg, type) {
 
 // Export functions (Simplified)
 function exportJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(holdingsData));
-  const downloadAnchorNode = document.createElement('a');
-  downloadAnchorNode.setAttribute("href", dataStr);
-  downloadAnchorNode.setAttribute("download", "holdings.json");
-  document.body.appendChild(downloadAnchorNode);
-  downloadAnchorNode.click();
-  downloadAnchorNode.remove();
+  const selected = getSelectedAccounts();
+  if (selected.length === 0) {
+    alert('Select at least one investment account to export.');
+    return;
+  }
+  const rawData = buildRawHoldingsExport(selected);
+  if (rawData.length === 0) {
+    alert('No holdings found for selected accounts.');
+    return;
+  }
+
+  const jsonString = JSON.stringify(rawData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'holdings.json';
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function copyCSV() {
-  // Implement CSV generation logic here if needed
-  alert('CSV Copy not implemented yet');
+  const csv = buildCSV();
+  if (!csv) return;
+  navigator.clipboard.writeText(csv)
+    .then(() => showMessage('CSV copied to clipboard', 'success'))
+    .catch(() => alert('Failed to copy CSV'));
 }
 
 function downloadCSV() {
-  // Implement CSV generation logic here if needed
-  alert('CSV Download not implemented yet');
+  const csv = buildCSV();
+  if (!csv) return;
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'holdings.csv');
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+// --- CSV helpers ---
+function buildCSV() {
+  const selected = getSelectedAccounts();
+  if (selected.length === 0) {
+    alert('Select at least one investment account to export.');
+    return null;
+  }
+  const grouped = buildGroupedHoldings(selected);
+  if (grouped.length === 0) {
+    alert('No holdings found for selected accounts.');
+    return null;
+  }
+
+  const rows = [];
+  rows.push(['Ticker', 'Name', 'Price', 'Total Qty', 'Total Value']);
+  grouped.forEach(g => {
+    rows.push([
+      g.ticker || '-',
+      g.name || '-',
+      g.price === undefined || g.price === null ? '-' : formatCurrency(g.price),
+      (g.total_quantity || 0).toFixed(4),
+      g.total_value === undefined || g.total_value === null ? '-' : formatCurrency(g.total_value)
+    ]);
+  });
+
+  return rows.map(r => r.map(csvEscape).join(',')).join('\n');
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return '';
+  const str = String(value);
+  if (/[",\n]/.test(str)) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
 }
 
 
