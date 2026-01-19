@@ -13,6 +13,10 @@ try {
 let idleTimeout;
 let tempLoginCreds = null; // For 2FA login flow
 let pageHiddenTime = null; // Track when page was hidden
+let turnstileWidgetId = null;
+let turnstileResolver = null;
+let turnstileRejecter = null;
+let turnstileInitPromise = null;
 
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
@@ -103,6 +107,78 @@ function showLogin() {
   $('#forgot-password-view').addClass('hidden');
   $('#two-factor-view').addClass('hidden');
   clearMessages();
+}
+
+async function initTurnstileWidget() {
+  if (turnstileInitPromise) {
+    return turnstileInitPromise;
+  }
+
+  turnstileInitPromise = (async () => {
+    if (!window.turnstile) {
+      return;
+    }
+
+    await window.BACKEND_URL_PROMISE;
+    const resolvedBackend = window.BACKEND_URL || '';
+    let siteKey = '0x4AAAAAACNX3qSz6p5n1wCN';
+
+    if (resolvedBackend.includes('127.0.0.1')) {
+      siteKey = '1x00000000000000000000AA';
+    } else if (resolvedBackend.includes('railway.app')) {
+      siteKey = '0x4AAAAAACNX3qSz6p5n1wCN';
+    }
+
+    turnstileWidgetId = window.turnstile.render('#turnstile-container', {
+      sitekey: siteKey,
+      size: 'normal',
+      execution: 'execute',
+      appearance: 'execute',
+      callback: (token) => {
+        if (turnstileResolver) {
+          const resolve = turnstileResolver;
+          turnstileResolver = null;
+          turnstileRejecter = null;
+          resolve(token);
+        }
+      },
+      'error-callback': () => {
+        if (turnstileRejecter) {
+          const reject = turnstileRejecter;
+          turnstileResolver = null;
+          turnstileRejecter = null;
+          reject(new Error('Captcha error. Please try again.'));
+        }
+      },
+      'expired-callback': () => {
+        if (turnstileRejecter) {
+          const reject = turnstileRejecter;
+          turnstileResolver = null;
+          turnstileRejecter = null;
+          reject(new Error('Captcha expired. Please try again.'));
+        }
+      }
+    });
+  })();
+
+  return turnstileInitPromise;
+}
+
+window.turnstileReady = function () {
+  initTurnstileWidget();
+};
+
+async function getTurnstileToken() {
+  await initTurnstileWidget();
+  if (!window.turnstile || turnstileWidgetId === null) {
+    throw new Error('Captcha is not ready. Please refresh and try again.');
+  }
+
+  return new Promise((resolve, reject) => {
+    turnstileResolver = resolve;
+    turnstileRejecter = reject;
+    window.turnstile.execute(turnstileWidgetId);
+  });
 }
 
 async function showRegister() {
@@ -629,13 +705,15 @@ async function resendVerification(email) {
     btn.disabled = true;
     
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    const turnstileToken = await getTurnstileToken();
     
-    const response = await fetch(`${BACKEND_URL}/api/auth/resend_verification`, {
+    const response = await fetch(`${BACKEND_URL}/api/users/resend_verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         email,
-        frontend_url: frontendUrl
+        frontend_url: frontendUrl,
+        turnstileToken
       })
     });
     
@@ -701,13 +779,15 @@ $('#forgot-form').on('submit', async function(e) {
   
   try {
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    const turnstileToken = await getTurnstileToken();
 
-    const response = await fetch(`${BACKEND_URL}/api/auth/forgot_password`, {
+    const response = await fetch(`${BACKEND_URL}/api/users/forgot_password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         email,
-        frontend_url: frontendUrl
+        frontend_url: frontendUrl,
+        turnstileToken
       })
     });
     
@@ -742,6 +822,7 @@ $('#register-form').on('submit', async function(e) {
     // Get current base URL (e.g., http://localhost:5501/iayoung85.github.io or https://bank.isaacyoung.com)
     // We remove the filename (index.html) to get the base path
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
+    const turnstileToken = await getTurnstileToken();
 
     const response = await fetch(`${BACKEND_URL}/api/users/register`, {
       method: 'POST',
@@ -751,7 +832,8 @@ $('#register-form').on('submit', async function(e) {
         password,
         first_name: firstName,
         last_name: lastName,
-        frontend_url: frontendUrl
+        frontend_url: frontendUrl,
+        turnstileToken
       })
     });
     

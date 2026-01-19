@@ -198,6 +198,31 @@ tr:hover {
   margin-left: 8px;
 }
 
+.site-footer {
+  margin: 24px auto 10px;
+  max-width: 1400px;
+  width: 100%;
+  text-align: center;
+  color: #666;
+}
+
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.site-footer a {
+  color: #182742;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.site-footer a:hover {
+  text-decoration: underline;
+}
+
 .status-active {
   background-color: #d4edda;
   color: #155724;
