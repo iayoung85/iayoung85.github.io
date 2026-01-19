@@ -16,6 +16,68 @@ let pageHiddenTime = null; // Track when page was hidden
 
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+const SESSION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const SESSION_CACHE_PREFIX = 'iay:sesscache:v1';
+
+function buildSessionCacheKey(baseKey) {
+  const userKey = currentUser && currentUser.email ? currentUser.email : 'anon';
+  return `${SESSION_CACHE_PREFIX}:${userKey}:${baseKey}`;
+}
+
+function readSessionCache(baseKey) {
+  const key = buildSessionCacheKey(baseKey);
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.timestamp) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    if (Date.now() - parsed.timestamp > SESSION_CACHE_TTL_MS) {
+      sessionStorage.removeItem(key);
+      return null;
+    }
+    return parsed.data;
+  } catch (error) {
+    sessionStorage.removeItem(key);
+    return null;
+  }
+}
+
+function writeSessionCache(baseKey, data) {
+  const key = buildSessionCacheKey(baseKey);
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ timestamp: Date.now(), data }));
+  } catch (error) {
+    // Ignore storage failures (quota, private mode, etc.)
+  }
+}
+
+function clearSessionCache(baseKey) {
+  try {
+    sessionStorage.removeItem(buildSessionCacheKey(baseKey));
+  } catch (error) {
+    // Ignore storage failures
+  }
+}
+
+// Clear all data caches from other pages when bank connections change
+function clearAllDataCaches() {
+  // Clear transactions.js caches
+  try {
+    localStorage.removeItem('transactionsCache');
+    localStorage.removeItem('transactionsAccountsCache');
+    localStorage.removeItem('transactionsViewerSettingsCache');
+  } catch (error) {}
+  
+  // Clear investments.js caches
+  try {
+    localStorage.removeItem('investmentHoldingsCache');
+    localStorage.removeItem('investmentAccountsCache');
+    localStorage.removeItem('investmentAccountsStatusCache');
+  } catch (error) {}
+}
 
 // Show appropriate view on page load
 $(document).ready(async function() {
@@ -110,17 +172,17 @@ function updateApprovalUI() {
   }
 }
 
-// Show a banner when account deletion is pending
-async function renderDashboardDeletionBanner() {
+// Show a banner when account deletion is pending (cached for 10 minutes)
+async function renderDashboardDeletionBanner(forceFresh = false) {
   const banner = $('#dashboard-deletion-banner');
   if (!banner.length || !authToken) return;
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/deletion-status`, { method: 'GET' });
-    const data = await response.json();
-    if (!response.ok) {
+
+  const renderFromRecord = (record) => {
+    if (!record || !record.ok || !record.data) {
       banner.empty();
       return;
     }
+    const data = record.data;
     if (data.pending) {
       const expires = data.token_expires_at ? ` This link expires at ${new Date(data.token_expires_at).toLocaleString()}.` : '';
       banner.html(`
@@ -137,6 +199,22 @@ async function renderDashboardDeletionBanner() {
     } else {
       banner.empty();
     }
+  };
+
+  if (!forceFresh) {
+    const cached = readSessionCache('deletion-status');
+    if (cached) {
+      renderFromRecord(cached);
+      return;
+    }
+  }
+
+  try {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/deletion-status`, { method: 'GET' });
+    const data = await response.json();
+    const record = { ok: response.ok, data };
+    writeSessionCache('deletion-status', record);
+    renderFromRecord(record);
   } catch (error) {
     console.error('Error fetching dashboard deletion status:', error);
     banner.empty();
@@ -162,15 +240,15 @@ function showTwoFactorLogin() {
   $('#two-factor-code').focus();
 }
 
-async function loadTokenBalances() {
-  try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/billing/subscription-status`);
-    const data = await response.json();
-    if (!response.ok) {
+async function loadTokenBalances(forceFresh = false) {
+  const applyStatus = (record) => {
+    if (!record || !record.ok || !record.data) {
       $('#token-tx-count').text('–');
       $('#token-inv-count').text('–');
       return;
     }
+
+    const data = record.data;
     const tx = data.current_tokens ? data.current_tokens.transaction : null;
     const inv = data.current_tokens ? data.current_tokens.investment : null;
     $('#token-tx-count').text(typeof tx === 'number' ? tx : '0');
@@ -184,15 +262,30 @@ async function loadTokenBalances() {
         updateApprovalUI();
       }
     }
+  };
+
+  try {
+    if (!forceFresh) {
+      const cached = readSessionCache('subscription-status');
+      if (cached) {
+        applyStatus(cached);
+        return;
+      }
+    }
+
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/billing/subscription-status`);
+    const data = await response.json();
+    const record = { ok: response.ok, data };
+    writeSessionCache('subscription-status', record);
+    applyStatus(record);
   } catch (error) {
-    $('#token-tx-count').text('–');
-    $('#token-inv-count').text('–');
+    applyStatus({ ok: false, data: null });
   }
 }
 
-async function loadConnectedBanks() {
+async function loadConnectedBanks(forceFresh = false) {
   try {
-    const items = await getUserItems();
+    const items = await getUserItems(forceFresh);
     const connectionsList = $('#connections-list');
     
     if (items.length === 0) {
@@ -330,7 +423,8 @@ async function toggleRemovalFlag(itemId, currentlyFlagged) {
     if (response.ok) {
       const msg = !currentlyFlagged ? '✓ Flagged for removal at end of cycle.' : '✓ Unflagged successfully.';
       showMessage('dashboard-message', msg, 'success');
-      loadConnectedBanks();
+      clearSessionCache('connections-items');
+      loadConnectedBanks(true);
     } else {
       const detail = data.message || data.error || 'Failed to update flag';
       showMessage('dashboard-message', `Error: ${detail}`, 'error');
@@ -352,6 +446,7 @@ function logout() {
   localStorage.removeItem('authToken');
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('currentUser');
+  try { sessionStorage.clear(); } catch (error) {}
   authToken = null;
   refreshToken = null;
   currentUser = null;
@@ -680,10 +775,22 @@ $('#register-form').on('submit', async function(e) {
 // Test connection button
 $('#test-connection').on('click', async function() {
   try {
+    const cached = readSessionCache('health');
+    if (cached) {
+      if (cached.ok && cached.data && cached.data.status === 'ok') {
+        showMessage('dashboard-message', '✓ Backend connected successfully!', 'success');
+      } else {
+        showMessage('dashboard-message', '⚠ Unexpected response from backend', 'error');
+      }
+      return;
+    }
+
     const response = await fetch(`${BACKEND_URL}/api/health`);
     const data = await response.json();
-    
-    if (data.status === 'ok') {
+    const record = { ok: response.ok, data };
+    writeSessionCache('health', record);
+
+    if (record.ok && data.status === 'ok') {
       showMessage('dashboard-message', '✓ Backend connected successfully!', 'success');
     } else {
       showMessage('dashboard-message', '⚠ Unexpected response from backend', 'error');
@@ -712,7 +819,14 @@ async function fetchLinkToken(itemId = null) {
   return data.link_token;
 }
 
-async function getUserItems() {
+async function getUserItems(forceFresh = false) {
+  if (!forceFresh) {
+    const cached = readSessionCache('connections-items');
+    if (Array.isArray(cached)) {
+      return cached;
+    }
+  }
+
   const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/items`);
   
   if (!response.ok) {
@@ -722,7 +836,9 @@ async function getUserItems() {
   }
   
   const data = await response.json();
-  return data.items || [];
+  const items = data.items || [];
+  writeSessionCache('connections-items', items);
+  return items;
 }
 
 async function exchangePublicToken(public_token) {
@@ -738,6 +854,15 @@ async function exchangePublicToken(public_token) {
   
   if (!response.ok) {
     throw new Error(data.error || 'Failed to connect bank');
+  }
+  
+  // Store newly connected investment items for auto-sync
+  if (data.billed_products && data.billed_products.includes('investments')) {
+    const newInvItems = JSON.parse(sessionStorage.getItem('newInvestmentItems') || '[]');
+    if (!newInvItems.includes(data.item_id)) {
+      newInvItems.push(data.item_id);
+      sessionStorage.setItem('newInvestmentItems', JSON.stringify(newInvItems));
+    }
   }
   
   return data;
@@ -774,7 +899,9 @@ $('#link-button').on('click', async function() {
               showMessage('dashboard-message', 
                 `${institutionName || 'This bank'} is already connected to your account. Please use the "Refresh" button to update the connection.`, 
                 'error');
-              loadConnectedBanks();
+              clearSessionCache('connections-items');
+              clearAllDataCaches();
+              loadConnectedBanks(true);
               return; // Exit without exchanging the token
             }
           }
@@ -782,8 +909,11 @@ $('#link-button').on('click', async function() {
           // Not a duplicate, proceed with normal flow
           await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
-          loadConnectedBanks();
-          loadTokenBalances();
+          clearSessionCache('connections-items');
+          clearSessionCache('subscription-status');
+          clearAllDataCaches();
+          loadConnectedBanks(true);
+          loadTokenBalances(true);
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }
@@ -841,7 +971,9 @@ $('#link-investment-button').on('click', async function() {
                 showMessage('dashboard-message', 
                   `${institutionName || 'This bank'} is already connected to your account. Please use the "Refresh" button to update the connection.`, 
                   'error');
-                loadConnectedBanks();
+                clearSessionCache('connections-items');
+                clearAllDataCaches();
+                loadConnectedBanks(true);
                 return; // Exit without exchanging the token
               }
             }
@@ -849,8 +981,11 @@ $('#link-investment-button').on('click', async function() {
             // Not a duplicate, proceed with exchange
             await exchangePublicToken(public_token);
             showMessage('dashboard-message', '✓ Bank connected successfully with investment access!', 'success');
-            loadConnectedBanks();
-            loadTokenBalances();
+            clearSessionCache('connections-items');
+            clearSessionCache('subscription-status');
+            clearAllDataCaches();
+            loadConnectedBanks(true);
+            loadTokenBalances(true);
           } catch (error) {
             showMessage('dashboard-message', 'Error: ' + error.message, 'error');
           }
@@ -913,7 +1048,9 @@ async function reconnectBank(itemId, bankName) {
           }
           
           // Refresh connected banks list
-          loadConnectedBanks();
+          clearSessionCache('connections-items');
+          clearAllDataCaches();
+          loadConnectedBanks(true);
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }
@@ -963,7 +1100,9 @@ async function disconnectBank(itemId, bankName) {
     } else if (response.ok) {
       // No swap opportunity, item removed successfully
       showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
-      loadConnectedBanks();
+      clearSessionCache('connections-items');
+      clearAllDataCaches();
+      loadConnectedBanks(true);
     } else {
       showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to disconnect bank'), 'error');
     }
@@ -1123,7 +1262,11 @@ async function applySwapAndDisconnect(itemId, bankName) {
     if (response.ok) {
       const tokenType = productType === 'both' ? 'both tokens' : `${productType} token`;
       showMessage('dashboard-message', `✓ Bank disconnected and swap applied! You received 1 ${tokenType}.`, 'success');
-      loadConnectedBanks();
+      clearSessionCache('connections-items');
+      clearSessionCache('subscription-status');
+      clearAllDataCaches();
+      loadConnectedBanks(true);
+      loadTokenBalances(true);
     } else {
       showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to apply swap'), 'error');
     }
@@ -1147,7 +1290,9 @@ async function closeSwapModalAndDisconnect(itemId) {
     
     if (response.ok) {
       showMessage('dashboard-message', '✓ Bank disconnected successfully!', 'success');
-      loadConnectedBanks();
+      clearSessionCache('connections-items');
+      clearAllDataCaches();
+      loadConnectedBanks(true);
     } else {
       showMessage('dashboard-message', 'Error: ' + (data.error || 'Failed to disconnect bank'), 'error');
     }
@@ -1170,7 +1315,11 @@ async function closeSwapModalAndDisconnect(itemId) {
         try {
           await exchangePublicToken(public_token);
           showMessage('dashboard-message', '✓ Bank connected successfully!', 'success');
-          loadTokenBalances();
+          clearSessionCache('connections-items');
+          clearSessionCache('subscription-status');
+          clearAllDataCaches();
+          loadConnectedBanks(true);
+          loadTokenBalances(true);
         } catch (error) {
           showMessage('dashboard-message', 'Error: ' + error.message, 'error');
         }

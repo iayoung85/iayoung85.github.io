@@ -4,11 +4,18 @@ let accounts = [];
 let transactions = [];
 let synced = false;
 
+// Local cache keys/durations
+const TRANSACTIONS_CACHE_KEY = 'transactionsCache';
+const TRANSACTIONS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
+const ACCOUNTS_CACHE_KEY = 'transactionsAccountsCache';
+const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
+const SETTINGS_CACHE_KEY = 'transactionsViewerSettingsCache';
+const SETTINGS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
 // Check authentication
 let token = localStorage.getItem('authToken');
 let refreshToken = localStorage.getItem('refreshToken');
 let idleTimeout;
-// Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
 
@@ -42,11 +49,9 @@ async function refreshAccessToken() {
     console.error('Token refresh failed:', error);
     return false;
   }
-  
 }
 
 async function authenticatedFetch(url, options = {}) {
-  // Add authorization header
   const headers = {
     'Authorization': `Bearer ${token}`,
     ...options.headers
@@ -54,17 +59,12 @@ async function authenticatedFetch(url, options = {}) {
   
   const response = await fetch(url, { ...options, headers });
   
-  // If we get a 401, try to refresh the token
   if (response.status === 401) {
     const refreshed = await refreshAccessToken();
-    
     if (refreshed) {
-      // Retry the request with new token
       headers['Authorization'] = `Bearer ${token}`;
       return fetch(url, { ...options, headers });
     }
-    
-    // If refresh failed, redirect to login
     alert('Session expired. Please log in again.');
     localStorage.removeItem('authToken');
     localStorage.removeItem('refreshToken');
@@ -73,6 +73,103 @@ async function authenticatedFetch(url, options = {}) {
   }
   
   return response;
+}
+
+// Cache helpers
+function getCachedTransactions() {
+  try {
+    const cached = localStorage.getItem(TRANSACTIONS_CACHE_KEY);
+    if (!cached) return null;
+    const { timestamp, data } = JSON.parse(cached);
+    if (!data) return null;
+    if (Date.now() - timestamp < TRANSACTIONS_CACHE_DURATION) {
+      return data;
+    }
+    localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
+  } catch (e) {
+    console.error('transactions cache read error:', e);
+    localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
+  }
+  return null;
+}
+
+function setCachedTransactions(data) {
+  try {
+    localStorage.setItem(TRANSACTIONS_CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      data
+    }));
+  } catch (e) {
+    console.error('transactions cache write error:', e);
+  }
+}
+
+function clearTransactionsCache() {
+  localStorage.removeItem(TRANSACTIONS_CACHE_KEY);
+}
+
+function getCachedAccounts() {
+  try {
+    const cached = localStorage.getItem(ACCOUNTS_CACHE_KEY);
+    if (!cached) return null;
+    const { timestamp, data } = JSON.parse(cached);
+    if (!data) return null;
+    if (Date.now() - timestamp < ACCOUNTS_CACHE_DURATION) {
+      return data;
+    }
+    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
+  } catch (e) {
+    console.error('accounts cache read error:', e);
+    localStorage.removeItem(ACCOUNTS_CACHE_KEY);
+  }
+  return null;
+}
+
+function setCachedAccounts(data) {
+  try {
+    localStorage.setItem(ACCOUNTS_CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      data
+    }));
+  } catch (e) {
+    console.error('accounts cache write error:', e);
+  }
+}
+
+function clearAccountsCache() {
+  localStorage.removeItem(ACCOUNTS_CACHE_KEY);
+}
+
+function getCachedSettings() {
+  try {
+    const cached = localStorage.getItem(SETTINGS_CACHE_KEY);
+    if (!cached) return null;
+    const { timestamp, data } = JSON.parse(cached);
+    if (!data) return null;
+    if (Date.now() - timestamp < SETTINGS_CACHE_DURATION) {
+      return data;
+    }
+    localStorage.removeItem(SETTINGS_CACHE_KEY);
+  } catch (e) {
+    console.error('settings cache read error:', e);
+    localStorage.removeItem(SETTINGS_CACHE_KEY);
+  }
+  return null;
+}
+
+function setCachedSettings(data) {
+  try {
+    localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      data
+    }));
+  } catch (e) {
+    console.error('settings cache write error:', e);
+  }
+}
+
+function clearSettingsCache() {
+  localStorage.removeItem(SETTINGS_CACHE_KEY);
 }
 
 
@@ -118,13 +215,16 @@ $(document).ready(async function() {
   setDefaultDates();
   resetIdleTimeout();
   setupActivityListeners();
-  await loadAccounts();
-  await loadSettings(); // Load saved settings
-  
+
+  // Load accounts and settings in parallel; keep checkboxes unchecked until both complete
+  await Promise.all([loadAccounts(), loadSettings()]);
+
+  // After everything is ready, select only enabled accounts/banks
+  selectAllAccounts();
+
   // Sync transactions with Plaid on page load (after accounts are loaded/selected)
   await autoSyncAndLoadTransactions();
 
-  
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
     renderTransactionTable();
@@ -272,6 +372,7 @@ function toggleConfig() {
 
 async function refreshAccounts() {
   try {
+    clearAccountsCache();
     showStatus('Syncing accounts from Plaid...', 'info');
     const response = await fetch(`${BACKEND_URL}/api/connections/accounts`, {
       headers: {
@@ -283,7 +384,7 @@ async function refreshAccounts() {
       throw new Error('Failed to refresh accounts');
     }
     
-    await loadAccounts();
+    await loadAccounts(true);
     showStatus('Accounts refreshed successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
   } catch (error) {
@@ -316,10 +417,19 @@ function deselectAllAccounts() {
   renderTransactionTable();
 }
 
-async function loadAccounts() {
+async function loadAccounts(skipCache = false) {
   try {
-    
-    
+    if (!skipCache) {
+      const cached = getCachedAccounts();
+      if (cached) {
+        accounts = cached;
+        renderAccountSelector();
+        showStatus('Loaded accounts from cache', 'info');
+        setTimeout(() => clearStatus(), 1500);
+        return;
+      }
+    }
+
     showStatus('Loading accounts...', 'info');
     
     // Use new endpoint that gets all accounts including disconnected ones
@@ -340,11 +450,9 @@ async function loadAccounts() {
     accounts = data.accounts || [];
     // Filter out investment accounts as they are not supported
     accounts = accounts.filter(acc => acc.account_type !== 'investment');
+    setCachedAccounts(accounts);
     
     renderAccountSelector();
-    
-    // By default, select all accounts after loading
-    selectAllAccounts()
     
     showStatus('Accounts loaded successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -459,8 +567,9 @@ async function activateBank(itemId) {
 
         await performSync(accountIds, formatDate(start), formatDate(end), true);
         
-        // Refresh accounts to update status
-        await loadAccounts();
+        // Refresh accounts to update status (force network)
+        clearAccountsCache();
+        await loadAccounts(true);
         showStatus('Activated successfully', 'success');
 
     } catch (error) {
@@ -505,10 +614,12 @@ async function performSync(accountIds, startDate, endDate, activate = false) {
 async function syncTransactions() {
   // This function is called when user manually clicks a sync button (if we keep one)
   // For now, syncing happens automatically on page load via autoSyncAndLoadTransactions()
-  await autoSyncAndLoadTransactions();
+  // Force network path on manual sync
+  clearTransactionsCache();
+  await autoSyncAndLoadTransactions(true);
 }
 
-async function autoSyncAndLoadTransactions() {
+async function autoSyncAndLoadTransactions(forceNetwork = false) {
   // This function runs on page load and handles sync + fetch automatically
   const selectedAccounts = getSelectedAccounts();
   const startDate = document.getElementById('start-date').value;
@@ -535,6 +646,18 @@ async function autoSyncAndLoadTransactions() {
   }
   
   try {
+    // If we have fresh cached transactions and not forcing network, use cache and skip backend calls
+    if (!forceNetwork) {
+      const cached = getCachedTransactions();
+      if (cached) {
+        transactions = cached;
+        renderTransactionTable();
+        showStatus(`Loaded ${transactions.length} transactions from cache`, 'info');
+        setTimeout(() => clearStatus(), 1500);
+        return;
+      }
+    }
+
     showStatus('Syncing transactions from Plaid...', 'info');
     
     const syncData = await performSync(selectedAccounts, startDate, endDate);
@@ -543,18 +666,29 @@ async function autoSyncAndLoadTransactions() {
     synced = true;
     
     // Now fetch all transactions from backend (no filters, frontend handles all filtering)
-    await fetchAllTransactions();
+    await fetchAllTransactions(true); // force network fetch after sync
     
   } catch (error) {
     showStatus(`Sync failed: ${error.message}`, 'error');
     // Still try to load cached transactions so the user sees something
-    await fetchAllTransactions();
+    await fetchAllTransactions(false);
   }
 }
 
-async function fetchAllTransactions() {
+async function fetchAllTransactions(forceNetwork = false) {
   // Fetch all transactions for the user (backend returns all, frontend filters)
   try {
+    if (!forceNetwork) {
+      const cached = getCachedTransactions();
+      if (cached) {
+        transactions = cached;
+        renderTransactionTable();
+        showStatus(`Loaded ${transactions.length} total transactions (cached)`, 'success');
+        setTimeout(() => clearStatus(), 1500);
+        return;
+      }
+    }
+
     showStatus('Loading all transactions...', 'info');
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transactions`, {
@@ -570,6 +704,7 @@ async function fetchAllTransactions() {
     }
     
     transactions = data.transactions || [];
+    setCachedTransactions(transactions);
     renderTransactionTable();
     showStatus(`Loaded ${transactions.length} total transactions (filters applied on frontend)`, 'success');
     setTimeout(() => clearStatus(), 2000);
@@ -865,7 +1000,8 @@ async function promptRename(accountId, currentCustomName) {
     setTimeout(() => clearStatus(), 2000);
     
     // Refresh accounts list
-    loadAccounts();
+    clearAccountsCache();
+    await loadAccounts(true);
     
   } catch (error) {
     console.error('Rename error:', error);
@@ -883,15 +1019,11 @@ async function saveSettings() {
     });
     const timezone = document.getElementById('timezone').value;
     
-    // We don't have a UI for field order yet, so we'll just use a default or current order
-    // For now, let's just save what we have
     const settings = {
       optional_fields: optionalFields,
       field_order: ['datetime', 'bank_account', 'name', 'amount', ...optionalFields],
       timezone: timezone
     };
-    
-    
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
       method: 'POST',
@@ -906,6 +1038,9 @@ async function saveSettings() {
       throw new Error(data.error || 'Failed to save settings');
     }
     
+    clearSettingsCache();
+    setCachedSettings(settings);
+    
     showStatus('Settings saved successfully', 'success');
     setTimeout(() => clearStatus(), 2000);
     
@@ -915,8 +1050,15 @@ async function saveSettings() {
   }
 }
 
-async function loadSettings() {
+async function loadSettings(skipCache = false) {
   try {
+    if (!skipCache) {
+      const cachedSettings = getCachedSettings();
+      if (cachedSettings) {
+        applySettings(cachedSettings);
+        return;
+      }
+    }
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
       method: 'GET'
@@ -927,27 +1069,25 @@ async function loadSettings() {
     }
     
     const settings = await response.json();
+    setCachedSettings(settings);
+    applySettings(settings);
     
-    
-    // Apply settings
-    if (settings.timezone) {
-      document.getElementById('timezone').value = settings.timezone;
-    }
-    
-    if (settings.optional_fields && Array.isArray(settings.optional_fields)) {
-      // Uncheck all first
-      $('.field-checkbox').prop('checked', false);
-      
-      // Check saved fields
-      settings.optional_fields.forEach(field => {
-        $(`.field-checkbox[value="${field}"]`).prop('checked', true);
-      });
-    }
-    
-    // Note: Account selection is not something that needs to be memorized. just load accounts and select all by default
-    
-    $('.account-checkbox').prop('checked', true);
   } catch (error) {
     console.error('Error loading settings:', error);
+  }
+}
+
+function applySettings(settings) {
+  if (!settings) return;
+
+  if (settings.timezone) {
+    document.getElementById('timezone').value = settings.timezone;
+  }
+  
+  if (settings.optional_fields && Array.isArray(settings.optional_fields)) {
+    $('.field-checkbox').prop('checked', false);
+    settings.optional_fields.forEach(field => {
+      $(`.field-checkbox[value="${field}"]`).prop('checked', true);
+    });
   }
 }

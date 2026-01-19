@@ -34,7 +34,30 @@ $(document).ready(async function() {
   // Load accounts first so selections exist
   await loadAccounts();
   await loadAccountStatus(); // Populate accountStatus for Sync All Holdings button
-  await loadHoldings();
+  
+  // Check for newly connected investment items and auto-sync
+  const newInvItems = JSON.parse(sessionStorage.getItem('newInvestmentItems') || '[]');
+  if (newInvItems.length > 0) {
+    console.log('Auto-syncing newly connected investment items:', newInvItems);
+    
+    // Sync each new item
+    for (const itemId of newInvItems) {
+      try {
+        await syncItem(itemId, false);  // Don't activate, just sync
+      } catch (error) {
+        console.error(`Failed to sync new investment item ${itemId}:`, error);
+      }
+    }
+    
+    // Clear the flags after syncing
+    sessionStorage.removeItem('newInvestmentItems');
+    
+    // Load holdings with fresh data (skip cache)
+    await loadHoldings(true);
+  } else {
+    // Normal load with cache
+    await loadHoldings();
+  }
 
   // Account selection changes
   $(document).on('change', '.account-checkbox', function() {
