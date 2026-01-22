@@ -218,10 +218,10 @@ function showDashboard() {
   $('#user-name').text(`${currentUser.first_name || ''} ${currentUser.last_name || ''}`);
   clearMessages();
   
-  // Load connected banks
-  loadConnectedBanks();
-  // Load token balances (transaction & investment)
-  loadTokenBalances();
+  // Load connected banks (force fresh to avoid stale cache after subscription changes)
+  loadConnectedBanks(true);
+  // Load token balances (transaction & investment) - force fresh for initial dashboard load
+  loadTokenBalances(true);
   
   // Apply approval-related UI state
   updateApprovalUI();
@@ -1365,7 +1365,7 @@ async function closeSwapModalAndDisconnect(itemId) {
     const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/remove_item`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ item_id: itemId })
+      body: JSON.stringify({ item_id: itemId, apply_swap: false, confirm_remove: true })
     });
     
     const data = await response.json();

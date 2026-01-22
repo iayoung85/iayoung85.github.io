@@ -2,6 +2,7 @@
 
 let accounts = [];
 let transactions = [];
+let categoryHistory = null; // Historical category data for insights
 let synced = false;
 
 // Local cache keys/durations
@@ -11,6 +12,8 @@ const ACCOUNTS_CACHE_KEY = 'transactionsAccountsCache';
 const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
 const SETTINGS_CACHE_KEY = 'transactionsViewerSettingsCache';
 const SETTINGS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+const CATEGORY_HISTORY_CACHE_KEY = 'categoryHistoryCache';
+const CATEGORY_HISTORY_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Check authentication
 let token = localStorage.getItem('authToken');
@@ -172,6 +175,38 @@ function clearSettingsCache() {
   localStorage.removeItem(SETTINGS_CACHE_KEY);
 }
 
+function getCachedCategoryHistory() {
+  try {
+    const cached = localStorage.getItem(CATEGORY_HISTORY_CACHE_KEY);
+    if (!cached) return null;
+    const { timestamp, data } = JSON.parse(cached);
+    if (!data) return null;
+    if (Date.now() - timestamp < CATEGORY_HISTORY_CACHE_DURATION) {
+      return data;
+    }
+    localStorage.removeItem(CATEGORY_HISTORY_CACHE_KEY);
+  } catch (e) {
+    console.error('category history cache read error:', e);
+    localStorage.removeItem(CATEGORY_HISTORY_CACHE_KEY);
+  }
+  return null;
+}
+
+function setCachedCategoryHistory(data) {
+  try {
+    localStorage.setItem(CATEGORY_HISTORY_CACHE_KEY, JSON.stringify({
+      timestamp: Date.now(),
+      data
+    }));
+  } catch (e) {
+    console.error('category history cache write error:', e);
+  }
+}
+
+function clearCategoryHistoryCache() {
+  localStorage.removeItem(CATEGORY_HISTORY_CACHE_KEY);
+}
+
 
 function resetIdleTimeout() {
   // Clear existing timeout
@@ -224,6 +259,9 @@ $(document).ready(async function() {
 
   // Sync transactions with Plaid on page load (after accounts are loaded/selected)
   await autoSyncAndLoadTransactions();
+
+  // Load category history for insights (non-blocking, loads in parallel)
+  loadCategoryHistory();
 
   // Add event listener for optional fields
   $(document).on('change', '.field-checkbox', function() {
@@ -725,6 +763,7 @@ function renderTransactionTable() {
   if (transactions.length === 0) {
     container.innerHTML = '<div class="empty-state">No transactions found. Sync transactions first.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
+    renderInsightsPanel(); // Still render empty insights
     return;
   }
 
@@ -773,6 +812,7 @@ function renderTransactionTable() {
     container.innerHTML = '<div class="empty-state">No transactions found for the selected criteria.</div>';
     document.getElementById('export-buttons').classList.add('hidden');
     renderCategoryChart(); // Clear chart when no data
+    renderInsightsPanel(); // Still render empty insights
     return;
   }
   
@@ -881,6 +921,9 @@ function renderTransactionTable() {
   
   // Update chart visualization
   renderCategoryChart();
+  
+  // Update insights panel
+  renderInsightsPanel();
 }
 
 function getSelectedAccounts() {
@@ -1075,11 +1118,13 @@ async function saveSettings() {
       optionalFields.push($(this).val());
     });
     const timezone = document.getElementById('timezone').value;
+    const hideTransfers = document.getElementById('hide-transfers').checked;
     
     const settings = {
       optional_fields: optionalFields,
       field_order: ['datetime', 'bank_account', 'name', 'amount', ...optionalFields],
-      timezone: timezone
+      timezone: timezone,
+      hide_transfers: hideTransfers
     };
     
     const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/transaction_viewer_settings`, {
@@ -1147,6 +1192,209 @@ function applySettings(settings) {
       $(`.field-checkbox[value="${field}"]`).prop('checked', true);
     });
   }
+  
+  // Apply hide_transfers setting (default to true if not set)
+  const hideTransfers = settings.hide_transfers !== undefined ? settings.hide_transfers : true;
+  document.getElementById('hide-transfers').checked = hideTransfers;
+}
+
+// ===============================
+// CATEGORY HISTORY & INSIGHTS
+// ===============================
+
+async function loadCategoryHistory() {
+  try {
+    // Check cache first
+    const cached = getCachedCategoryHistory();
+    if (cached) {
+      categoryHistory = cached;
+      console.log('Category history loaded from cache');
+      return;
+    }
+
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/category-history`, {
+      method: 'GET'
+    });
+
+    if (!response.ok) {
+      console.warn('Failed to load category history');
+      return;
+    }
+
+    const data = await response.json();
+    if (data.success && data.data) {
+      categoryHistory = data;
+      setCachedCategoryHistory(data);
+      console.log('Category history loaded successfully');
+    }
+  } catch (error) {
+    console.error('Error loading category history:', error);
+  }
+}
+
+function generateSpendingInsights() {
+  // Generate statistical insights based on filtered transactions and historical data
+  const startDate = document.getElementById('start-date').value;
+  const endDate = document.getElementById('end-date').value;
+  const selectedAccounts = getSelectedAccounts();
+  const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
+  const hideTransfers = document.getElementById('hide-transfers').checked;
+
+  // Get filtered transactions (same filter as table)
+  const filteredTransactions = transactions.filter(txn => {
+    if (txn.date < startDate || txn.date > endDate) return false;
+    if (selectedAccounts.length > 0 && !selectedAccounts.includes(txn.plaid_account_id)) return false;
+    if (txn.pending && !showPendingCheckbox) return false;
+    if (hideTransfers) {
+      const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
+      if (/transfer/i.test(primaryCat)) return false;
+    }
+    if (txn.personal_finance_category && txn.personal_finance_category.primary) {
+      if (/income/i.test(txn.personal_finance_category.primary)) return false;
+    }
+    return true;
+  });
+
+  if (filteredTransactions.length === 0) {
+    return null;
+  }
+
+  // Calculate current period stats
+  const currentStats = {
+    totalSpending: 0,
+    transactionCount: filteredTransactions.length,
+    categories: {},
+    largestTransaction: null,
+    averageTransaction: 0
+  };
+
+  filteredTransactions.forEach(txn => {
+    const amount = Math.abs(txn.amount || 0);
+    currentStats.totalSpending += amount;
+
+    // Track largest transaction
+    if (!currentStats.largestTransaction || amount > currentStats.largestTransaction.amount) {
+      currentStats.largestTransaction = {
+        amount: amount,
+        merchant: txn.merchant_name || txn.name || 'Unknown',
+        date: txn.date,
+        category: (txn.personal_finance_category && txn.personal_finance_category.primary) || 'Uncategorized'
+      };
+    }
+
+    // Aggregate by primary category
+    const category = (txn.personal_finance_category && txn.personal_finance_category.primary) || 'Uncategorized';
+    const categoryName = category.replace(/_/g, ' ');
+    if (!currentStats.categories[categoryName]) {
+      currentStats.categories[categoryName] = { total: 0, count: 0 };
+    }
+    currentStats.categories[categoryName].total += amount;
+    currentStats.categories[categoryName].count += 1;
+  });
+
+  currentStats.averageTransaction = currentStats.totalSpending / currentStats.transactionCount;
+
+  // Get top categories
+  const topCategories = Object.entries(currentStats.categories)
+    .map(([name, data]) => ({ name, total: data.total, count: data.count }))
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 3);
+
+  // Build insights array
+  const insights = [];
+
+  // Insight 1: Total spending
+  const formattedTotal = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(currentStats.totalSpending);
+  insights.push({
+    icon: '💰',
+    label: 'Total Spending',
+    value: `${formattedTotal} across ${currentStats.transactionCount} transactions`
+  });
+
+  // Insight 2: Top category
+  if (topCategories.length > 0) {
+    const topCat = topCategories[0];
+    const percentage = ((topCat.total / currentStats.totalSpending) * 100).toFixed(0);
+    const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(topCat.total);
+    insights.push({
+      icon: '📈',
+      label: 'Top Category',
+      value: `${topCat.name} (${formatted} - ${percentage}% of spending)`
+    });
+  }
+
+  // Insight 3: Average transaction
+  const formattedAvg = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(currentStats.averageTransaction);
+  insights.push({
+    icon: '💳',
+    label: 'Average Transaction',
+    value: formattedAvg
+  });
+
+  // Insight 4: Largest transaction
+  if (currentStats.largestTransaction) {
+    const formatted = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(currentStats.largestTransaction.amount);
+    insights.push({
+      icon: '🔥',
+      label: 'Largest Purchase',
+      value: `${formatted} at ${currentStats.largestTransaction.merchant}`
+    });
+  }
+
+  // Insight 5: Period-over-period comparison (if history available)
+  if (categoryHistory && categoryHistory.data && categoryHistory.data.length >= 2) {
+    const latestPeriod = categoryHistory.summary.latest_period;
+    if (latestPeriod && topCategories.length > 0) {
+      const topCat = topCategories[0];
+      const historicalAmount = latestPeriod.categories[topCat.name] || 0;
+      
+      if (historicalAmount > 0) {
+        const change = ((topCat.total - historicalAmount) / historicalAmount) * 100;
+        const direction = change > 0 ? '📈' : '📉';
+        const arrow = change > 0 ? 'up' : 'down';
+        
+        if (Math.abs(change) > 25) { // Only show if change is >25%
+          insights.push({
+            icon: direction,
+            label: 'Unusual Activity',
+            value: `${topCat.name} ${arrow} ${Math.abs(change).toFixed(0)}% vs previous period`,
+            highlight: true
+          });
+        }
+      }
+    }
+  }
+
+  return insights;
+}
+
+function renderInsightsPanel() {
+  const container = document.getElementById('insights-container');
+  if (!container) return; // Insights panel not in DOM yet
+
+  const insights = generateSpendingInsights();
+  
+  if (!insights || insights.length === 0) {
+    container.innerHTML = '<div class="insights-empty">Select accounts and date range to view insights</div>';
+    return;
+  }
+
+  let html = '<div class="insights-grid">';
+  insights.forEach(insight => {
+    const highlightClass = insight.highlight ? ' highlight' : '';
+    html += `
+      <div class="insight-card${highlightClass}">
+        <div class="insight-icon">${insight.icon}</div>
+        <div class="insight-content">
+          <div class="insight-label">${insight.label}</div>
+          <div class="insight-value">${insight.value}</div>
+        </div>
+      </div>
+    `;
+  });
+  html += '</div>';
+
+  container.innerHTML = html;
 }
 
 // ===============================
