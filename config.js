@@ -4,6 +4,13 @@
 var BACKEND_URL;
 
 function detectBackendUrl() {
+  // Check for backend URL in query params (for ngrok demos)
+  const urlParams = new URLSearchParams(window.location.search);
+  const backendParam = urlParams.get('backend');
+  if (backendParam) {
+     return Promise.resolve(backendParam);
+  }
+
   const hostname = window.location.hostname;
   // Try local ports if on localhost
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
@@ -38,6 +45,20 @@ function detectBackendUrl() {
       }
       tryNext();
     });
+  } else if (hostname.includes('ngrok')) {
+    // If running on ngrok (likely demo mode), check if current origin serves the API
+    const origin = window.location.origin;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    
+    return fetch(`${origin}/api/auth/health`, { signal: controller.signal })
+      .then(r => {
+        clearTimeout(timeoutId);
+        if (r.ok) return origin;
+        // Fallback or likely misconfigured if ngrok is used without backend
+        return 'https://pythonplaidbackend-production.up.railway.app';
+      })
+      .catch(() => 'https://pythonplaidbackend-production.up.railway.app');
   } else {
     // Production
     return Promise.resolve('https://pythonplaidbackend-production.up.railway.app');

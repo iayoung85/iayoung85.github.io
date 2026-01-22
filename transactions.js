@@ -240,6 +240,11 @@ $(document).ready(async function() {
     renderTransactionTable();
   });
 
+  // Add event listener for hiding transfers
+  $(document).on('change', '#hide-transfers', function() {
+    renderTransactionTable();
+  });
+
   // Add event listener for start date validation
   $('#start-date').on('blur', function() {
     if (!this.value) return;
@@ -728,6 +733,7 @@ function renderTransactionTable() {
   const endDate = document.getElementById('end-date').value;
   const selectedAccounts = getSelectedAccounts();
   const showPendingCheckbox = document.querySelector('.field-checkbox[value="pending"]:checked');
+  const hideTransfers = document.getElementById('hide-transfers').checked;
   
   // Get selected optional fields
   const optionalFields = [];
@@ -751,6 +757,14 @@ function renderTransactionTable() {
     if (txn.pending && !showPendingCheckbox) {
       return false;
     }
+
+    // Hide transfers if requested (checks personal finance primary category)
+    if (hideTransfers) {
+      const primaryCat = (txn.personal_finance_category && txn.personal_finance_category.primary) || '';
+      if (/transfer/i.test(primaryCat)) {
+        return false;
+      }
+    }
     
     return true;
   });
@@ -769,7 +783,11 @@ function renderTransactionTable() {
   
   // Add optional headers
   if (optionalFields.includes('merchant_name')) html += '<th>Merchant</th>';
-  if (optionalFields.includes('category')) html += '<th>Category</th>';
+   if (optionalFields.includes('category')) {
+     html += '<th>Category (Primary)</th>';
+     html += '<th>Category (Detailed)</th>';
+     html += '<th>Confidence</th>';
+   }
   if (optionalFields.includes('payment_channel')) html += '<th>Channel</th>';
   if (optionalFields.includes('pending')) html += '<th>Pending</th>';
   if (optionalFields.includes('check_number')) html += '<th>Check #</th>';
@@ -804,15 +822,32 @@ function renderTransactionTable() {
     // Add optional cells
     if (optionalFields.includes('merchant_name')) html += `<td>${txn.merchant_name || ''}</td>`;
     if (optionalFields.includes('category')) {
-        let cat = txn.category;
-        // Handle PostgreSQL array string format if necessary, or JSON array
-        if (typeof cat === 'string' && cat.startsWith('{')) {
-            // Simple cleanup for {Category,Subcategory} format
-            cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
-        } else if (Array.isArray(cat)) {
-            cat = cat.join(', ');
-        }
-        html += `<td>${cat || ''}</td>`;
+         // Use new personal_finance_category if available, otherwise fallback to legacy category
+        const pfc = txn.personal_finance_category;
+        if (pfc) {
+          const primary = (pfc.primary || '').replace(/_/g, ' ').trim();
+          const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
+          // Remove the primary phrase if it prefixes detailed; otherwise drop first token
+          let detailed = detailedRaw;
+          if (primary && detailedRaw.toLowerCase().startsWith(primary.toLowerCase() + ' ')) {
+            detailed = detailedRaw.slice(primary.length).trim();
+          } else {
+            detailed = detailedRaw.replace(/^\S+\s*/, '').trim();
+          }
+          const confidence = (pfc.confidence_level || '').replace(/_/g, ' ');
+           html += `<td>${primary}</td>`;
+           html += `<td>${detailed}</td>`;
+           html += `<td>${confidence}</td>`;
+         } else {
+           // Fallback to legacy category format
+           let cat = txn.category;
+           if (typeof cat === 'string' && cat.startsWith('{')) {
+             cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
+           } else if (Array.isArray(cat)) {
+             cat = cat.join(', ');
+           }
+           html += `<td colspan="3">${cat || ''}</td>`;
+         }
     }
     if (optionalFields.includes('payment_channel')) html += `<td>${txn.payment_channel || ''}</td>`;
     if (optionalFields.includes('pending')) html += `<td>${txn.pending ? 'Yes' : 'No'}</td>`;
@@ -893,7 +928,7 @@ function generateCSV() {
   
   // Add optional headers
   if (optionalFields.includes('merchant_name')) csv += ',Merchant';
-  if (optionalFields.includes('category')) csv += ',Category';
+   if (optionalFields.includes('category')) csv += ',Category (Primary),Category (Detailed),Confidence';
   if (optionalFields.includes('payment_channel')) csv += ',Channel';
   if (optionalFields.includes('pending')) csv += ',Pending';
   if (optionalFields.includes('check_number')) csv += ',Check #';
@@ -919,13 +954,31 @@ function generateCSV() {
     // Add optional fields
     if (optionalFields.includes('merchant_name')) csv += `,"${(txn.merchant_name || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('category')) {
-        let cat = txn.category;
-        if (typeof cat === 'string' && cat.startsWith('{')) {
-            cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
-        } else if (Array.isArray(cat)) {
-            cat = cat.join(', ');
-        }
-        csv += `,"${(cat || '').replace(/"/g, '""')}"`;
+         // Use new personal_finance_category if available
+         const pfc = txn.personal_finance_category;
+         if (pfc) {
+           const primaryRaw = (pfc.primary || '').replace(/_/g, ' ').trim();
+           const detailedRaw = (pfc.detailed || '').replace(/_/g, ' ').trim();
+           let detailedTrimmed = detailedRaw;
+           if (primaryRaw && detailedRaw.toLowerCase().startsWith(primaryRaw.toLowerCase() + ' ')) {
+             detailedTrimmed = detailedRaw.slice(primaryRaw.length).trim();
+           } else {
+             detailedTrimmed = detailedRaw.replace(/^\S+\s*/, '').trim();
+           }
+           const primary = primaryRaw.replace(/"/g, '""');
+           const detailed = detailedTrimmed.replace(/"/g, '""');
+           const confidence = (pfc.confidence_level || '').replace(/_/g, ' ').replace(/"/g, '""');
+           csv += `,"${primary}","${detailed}","${confidence}"`;
+         } else {
+           // Fallback to legacy category
+           let cat = txn.category;
+           if (typeof cat === 'string' && cat.startsWith('{')) {
+             cat = cat.replace(/^{|}$/g, '').replace(/,/g, ', ');
+           } else if (Array.isArray(cat)) {
+             cat = cat.join(', ');
+           }
+           csv += `,"${(cat || '').replace(/"/g, '""')}","",""`;
+         }
     }
     if (optionalFields.includes('payment_channel')) csv += `,"${(txn.payment_channel || '').replace(/"/g, '""')}"`;
     if (optionalFields.includes('pending')) csv += `,${txn.pending ? 'Yes' : 'No'}`;
