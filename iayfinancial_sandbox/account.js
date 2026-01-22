@@ -1,15 +1,18 @@
 // Account Settings Page Logic
 // BACKEND_URL is defined in config.js
 
+// Sandbox-specific localStorage prefix to avoid conflicts with production
+const STORAGE_PREFIX = 'sandbox_';
+
 // Global variables
-let authToken = localStorage.getItem('authToken');
-let refreshToken = localStorage.getItem('refreshToken');
+let authToken = localStorage.getItem(`${STORAGE_PREFIX}authToken`);
+let refreshToken = localStorage.getItem(`${STORAGE_PREFIX}refreshToken`);
 let currentUser = null;
 try {
-  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  currentUser = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}currentUser`) || 'null');
 } catch (e) {
   console.error('Error parsing currentUser from localStorage', e);
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem(`${STORAGE_PREFIX}currentUser`);
 }
 
 // Initialize on page load
@@ -312,7 +315,7 @@ async function updateProfileInfo() {
       // Update stored user data
       currentUser.first_name = firstName;
       currentUser.last_name = lastName;
-      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+      localStorage.setItem(`${STORAGE_PREFIX}currentUser`, JSON.stringify(currentUser));
 
       showMessage('edit-profile-message', '✓ Profile updated successfully!', 'success');
       setTimeout(() => loadProfileDetails(), 1500);
@@ -1961,11 +1964,11 @@ async function refreshAccessToken() {
     if (response.ok) {
       const data = await response.json();
       authToken = data.access_token;
-      localStorage.setItem('authToken', authToken);
+      localStorage.setItem(`${STORAGE_PREFIX}authToken`, authToken);
 
       if (data.refresh_token) {
         refreshToken = data.refresh_token;
-        localStorage.setItem('refreshToken', refreshToken);
+        localStorage.setItem(`${STORAGE_PREFIX}refreshToken`, refreshToken);
       }
 
       return true;
@@ -2005,9 +2008,9 @@ function setupActivityListeners() {
 }
 
 function logout() {
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem(`${STORAGE_PREFIX}authToken`);
+  localStorage.removeItem(`${STORAGE_PREFIX}refreshToken`);
+  localStorage.removeItem(`${STORAGE_PREFIX}currentUser`);
   authToken = null;
   refreshToken = null;
   currentUser = null;

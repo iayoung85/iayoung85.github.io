@@ -1,14 +1,17 @@
 // BACKEND_URL is now defined in config.js and auto-detects environment
 
+// Sandbox-specific localStorage prefix to avoid conflicts with production
+const STORAGE_PREFIX = 'sandbox_';
+
 // Global variables
-let authToken = localStorage.getItem('authToken');
-let refreshToken = localStorage.getItem('refreshToken');
+let authToken = localStorage.getItem(`${STORAGE_PREFIX}authToken`);
+let refreshToken = localStorage.getItem(`${STORAGE_PREFIX}refreshToken`);
 let currentUser = null;
 try {
-  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  currentUser = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}currentUser`) || 'null');
 } catch (e) {
   console.error('Error parsing currentUser from localStorage', e);
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem(`${STORAGE_PREFIX}currentUser`);
 }
 let idleTimeout;
 let tempLoginCreds = null; // For 2FA login flow
@@ -21,7 +24,7 @@ let turnstileInitPromise = null;
 // Idle timeout settings (30 minutes of inactivity)
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
 const SESSION_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-const SESSION_CACHE_PREFIX = 'iay:sesscache:v1';
+const SESSION_CACHE_PREFIX = 'iay:sesscache:v1:sandbox';
 
 function buildSessionCacheKey(baseKey) {
   const userKey = currentUser && currentUser.email ? currentUser.email : 'anon';
@@ -70,16 +73,16 @@ function clearSessionCache(baseKey) {
 function clearAllDataCaches() {
   // Clear transactions.js caches
   try {
-    localStorage.removeItem('transactionsCache');
-    localStorage.removeItem('transactionsAccountsCache');
-    localStorage.removeItem('transactionsViewerSettingsCache');
+    localStorage.removeItem(`${STORAGE_PREFIX}transactionsCache`);
+    localStorage.removeItem(`${STORAGE_PREFIX}transactionsAccountsCache`);
+    localStorage.removeItem(`${STORAGE_PREFIX}transactionsViewerSettingsCache`);
   } catch (error) {}
   
   // Clear investments.js caches
   try {
-    localStorage.removeItem('investmentHoldingsCache');
-    localStorage.removeItem('investmentAccountsCache');
-    localStorage.removeItem('investmentAccountsStatusCache');
+    localStorage.removeItem(`${STORAGE_PREFIX}investmentHoldingsCache`);
+    localStorage.removeItem(`${STORAGE_PREFIX}investmentAccountsCache`);
+    localStorage.removeItem(`${STORAGE_PREFIX}investmentAccountsStatusCache`);
   } catch (error) {}
 }
 
@@ -334,7 +337,7 @@ async function loadTokenBalances(forceFresh = false) {
     if (typeof data.approved === 'boolean' && currentUser) {
       if (currentUser.approved !== data.approved) {
         currentUser.approved = data.approved;
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        localStorage.setItem(`${STORAGE_PREFIX}currentUser`, JSON.stringify(currentUser));
         updateApprovalUI();
       }
     }
@@ -519,9 +522,9 @@ function showMessage(containerId, message, type) {
 }
 
 function logout() {
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem(`${STORAGE_PREFIX}authToken`);
+  localStorage.removeItem(`${STORAGE_PREFIX}refreshToken`);
+  localStorage.removeItem(`${STORAGE_PREFIX}currentUser`);
   try { sessionStorage.clear(); } catch (error) {}
   authToken = null;
   refreshToken = null;
@@ -545,12 +548,12 @@ async function refreshAccessToken() {
     if (response.ok) {
       const data = await response.json();
       authToken = data.access_token;
-      localStorage.setItem('authToken', authToken);
+      localStorage.setItem(`${STORAGE_PREFIX}authToken`, authToken);
       
       // Update refresh token if provided (Sliding Window)
       if (data.refresh_token) {
         refreshToken = data.refresh_token;
-        localStorage.setItem('refreshToken', refreshToken);
+        localStorage.setItem(`${STORAGE_PREFIX}refreshToken`, refreshToken);
       }
       
       resetIdleTimeout(); // Reset idle timer after successful refresh
@@ -671,9 +674,9 @@ $('#login-form').on('submit', async function(e) {
         // Normal login success
         authToken = data.access_token;
         currentUser = data.user;
-        localStorage.setItem('authToken', authToken);
-        localStorage.setItem('refreshToken', data.refresh_token);
-        localStorage.setItem('currentUser', JSON.stringify(currentUser));
+        localStorage.setItem(`${STORAGE_PREFIX}authToken`, authToken);
+        localStorage.setItem(`${STORAGE_PREFIX}refreshToken`, data.refresh_token);
+        localStorage.setItem(`${STORAGE_PREFIX}currentUser`, JSON.stringify(currentUser));
         showDashboard();
       }
     } else {

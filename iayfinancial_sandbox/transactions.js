@@ -1,26 +1,29 @@
 // BACKEND_URL is now defined in config.js and auto-detects environment
 
+// Sandbox-specific localStorage prefix to avoid conflicts with production
+const STORAGE_PREFIX = 'sandbox_';
+
 let accounts = [];
 let transactions = [];
 let categoryHistory = null; // Historical category data for insights
 let synced = false;
 
 // Local cache keys/durations
-const TRANSACTIONS_CACHE_KEY = 'transactionsCache';
+const TRANSACTIONS_CACHE_KEY = `${STORAGE_PREFIX}transactionsCache`;
 const TRANSACTIONS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
-const ACCOUNTS_CACHE_KEY = 'transactionsAccountsCache';
+const ACCOUNTS_CACHE_KEY = `${STORAGE_PREFIX}transactionsAccountsCache`;
 const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours
-const SETTINGS_CACHE_KEY = 'transactionsViewerSettingsCache';
+const SETTINGS_CACHE_KEY = `${STORAGE_PREFIX}transactionsViewerSettingsCache`;
 const SETTINGS_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
-const CATEGORY_HISTORY_CACHE_KEY = 'categoryHistoryCache';
+const CATEGORY_HISTORY_CACHE_KEY = `${STORAGE_PREFIX}categoryHistoryCache`;
 const CATEGORY_HISTORY_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
 // Check authentication
-let token = localStorage.getItem('authToken');
-let refreshToken = localStorage.getItem('refreshToken');
+let token = localStorage.getItem(`${STORAGE_PREFIX}authToken`);
+let refreshToken = localStorage.getItem(`${STORAGE_PREFIX}refreshToken`);
 let idleTimeout;
 const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
-let currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+let currentUser = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}currentUser`) || 'null');
 
 if (!token) {
   alert('Please log in first');
@@ -42,7 +45,7 @@ async function refreshAccessToken() {
     if (response.ok) {
       const data = await response.json();
       token = data.access_token;
-      localStorage.setItem('authToken', token);
+      localStorage.setItem(`${STORAGE_PREFIX}authToken`, token);
       resetIdleTimeout();
       return true;
     } else {
@@ -69,9 +72,9 @@ async function authenticatedFetch(url, options = {}) {
       return fetch(url, { ...options, headers });
     }
     alert('Session expired. Please log in again.');
-    localStorage.removeItem('authToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('currentUser');
+    localStorage.removeItem(`${STORAGE_PREFIX}authToken`);
+    localStorage.removeItem(`${STORAGE_PREFIX}refreshToken`);
+    localStorage.removeItem(`${STORAGE_PREFIX}currentUser`);
     window.location.href = 'index.html';
   }
   
@@ -235,9 +238,9 @@ function setupActivityListeners() {
 
 
 function logout() {
-  localStorage.removeItem('authToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('currentUser');
+  localStorage.removeItem(`${STORAGE_PREFIX}authToken`);
+  localStorage.removeItem(`${STORAGE_PREFIX}refreshToken`);
+  localStorage.removeItem(`${STORAGE_PREFIX}currentUser`);
   token = null;
   refreshToken = null;
   currentUser = null;

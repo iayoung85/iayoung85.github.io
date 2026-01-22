@@ -1,20 +1,23 @@
 // BACKEND_URL is defined in config.js
 
+// Sandbox-specific localStorage prefix to avoid conflicts with production
+const STORAGE_PREFIX = 'sandbox_';
+
 let holdingsData = [];
 let securitiesData = [];
 let accountStatus = [];
 let investmentAccounts = [];
 let currentUser = null;
-let authToken = localStorage.getItem('authToken');
-let refreshToken = localStorage.getItem('refreshToken');
+let authToken = localStorage.getItem(`${STORAGE_PREFIX}authToken`);
+let refreshToken = localStorage.getItem(`${STORAGE_PREFIX}refreshToken`);
 
-const CACHE_KEY = 'investmentHoldingsCache';
+const CACHE_KEY = `${STORAGE_PREFIX}investmentHoldingsCache`;
 const CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
-const ACCOUNTS_CACHE_KEY = 'investmentAccountsCache';
+const ACCOUNTS_CACHE_KEY = `${STORAGE_PREFIX}investmentAccountsCache`;
 const ACCOUNTS_CACHE_DURATION = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
-const ACCOUNTS_STATUS_CACHE_KEY = 'investmentAccountsStatusCache';
+const ACCOUNTS_STATUS_CACHE_KEY = `${STORAGE_PREFIX}investmentAccountsStatusCache`;
 const ACCOUNTS_STATUS_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes in milliseconds
 
 // Auth Check
@@ -23,7 +26,7 @@ if (!authToken) {
 }
 
 try {
-  currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  currentUser = JSON.parse(localStorage.getItem(`${STORAGE_PREFIX}currentUser`) || 'null');
 } catch (e) {
   console.error('Error parsing user', e);
 }
@@ -102,7 +105,7 @@ async function refreshAccessToken() {
     if (response.ok) {
       const data = await response.json();
       authToken = data.access_token;
-      localStorage.setItem('authToken', authToken);
+      localStorage.setItem(`${STORAGE_PREFIX}authToken`, authToken);
       return true;
     }
   } catch (e) { console.error(e); }
@@ -829,7 +832,7 @@ async function exchangePublicToken(public_token) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                'Authorization': `Bearer ${localStorage.getItem(`${STORAGE_PREFIX}authToken`)}`
             },
             body: JSON.stringify({ public_token: public_token })
         });
