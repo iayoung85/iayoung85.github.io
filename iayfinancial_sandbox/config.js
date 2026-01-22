@@ -19,8 +19,8 @@ function detectBackendUrl() {
     return new Promise((resolve) => {
       function tryNext() {
         if (checked >= ports.length) {
-          // Fallback to production if none work (silent)
-          resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
+          // Fallback to sandbox backend for sandbox subdirectory
+          resolve('https://pythonplaidbackend-sandboxiayfinancial.up.railway.app');
           return;
         }
         const url = `http://${hostname}:${ports[checked]}`;
@@ -55,13 +55,13 @@ function detectBackendUrl() {
       .then(r => {
         clearTimeout(timeoutId);
         if (r.ok) return origin;
-        // Fallback or likely misconfigured if ngrok is used without backend
-        return 'https://pythonplaidbackend-iayfinancialprod.up.railway.app';
+        // Fallback to sandbox backend
+        return 'https://pythonplaidbackend-sandboxiayfinancial.up.railway.app';
       })
-      .catch(() => 'https://pythonplaidbackend-iayfinancialprod.up.railway.app');
+      .catch(() => 'https://pythonplaidbackend-sandboxiayfinancial.up.railway.app');
   } else {
-    // Production
-    return Promise.resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
+    // Sandbox backend for GitHub Pages subdirectory
+    return Promise.resolve('https://pythonplaidbackend-sandboxiayfinancial.up.railway.app');
   }
 }
 
