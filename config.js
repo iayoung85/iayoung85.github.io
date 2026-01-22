@@ -61,7 +61,7 @@ function detectBackendUrl() {
       .catch(() => 'https://pythonplaidbackend-production.up.railway.app');
   } else {
     // Production
-    return Promise.resolve('https://pythonplaidbackend-production.up.railway.app');
+    return Promise.resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
   }
 }
 
