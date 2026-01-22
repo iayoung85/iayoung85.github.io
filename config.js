@@ -20,7 +20,7 @@ function detectBackendUrl() {
       function tryNext() {
         if (checked >= ports.length) {
           // Fallback to production if none work (silent)
-          resolve('https://pythonplaidbackend-production.up.railway.app');
+          resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
           return;
         }
         const url = `http://${hostname}:${ports[checked]}`;
@@ -56,9 +56,9 @@ function detectBackendUrl() {
         clearTimeout(timeoutId);
         if (r.ok) return origin;
         // Fallback or likely misconfigured if ngrok is used without backend
-        return 'https://pythonplaidbackend-production.up.railway.app';
+        return 'https://pythonplaidbackend-iayfinancialprod.up.railway.app';
       })
-      .catch(() => 'https://pythonplaidbackend-production.up.railway.app');
+      .catch(() => 'https://pythonplaidbackend-iayfinancialprod.up.railway.app');
   } else {
     // Production
     return Promise.resolve('https://pythonplaidbackend-iayfinancialprod.up.railway.app');
