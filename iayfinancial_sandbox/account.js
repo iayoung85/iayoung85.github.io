@@ -213,7 +213,7 @@ async function loadProfileDetails() {
   container.html('<div class="loading">Loading profile details...</div>');
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/profile-info`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/profile-info`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -303,7 +303,7 @@ async function updateProfileInfo() {
   const lastName = $('#edit-last-name').val().trim();
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/update-profile-info`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/update-profile-info`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ first_name: firstName, last_name: lastName })
@@ -377,7 +377,7 @@ async function requestEmailChange() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/change-email-request`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/change-email-request`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -511,7 +511,7 @@ async function changePassword() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/change-password`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/change-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1435,7 +1435,7 @@ async function loadTwoFactorAuthSettings() {
   container.html('<div class="loading">Loading 2FA settings...</div>');
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/profile-info`);
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/profile-info`);
     const data = await response.json();
 
     if (!response.ok) {
@@ -1519,7 +1519,7 @@ function cancelTwoFactorSetup() {
 
 async function fetchTwoFactorSecret() {
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/setup_2fa`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/setup_2fa`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({})
@@ -1674,7 +1674,7 @@ async function requestAccountDeletion() {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/request-account-deletion`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/request-account-deletion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ twofa_code: twoFACode })
@@ -1700,7 +1700,7 @@ async function resendDeletionEmail() {
   const twoFACode = $('#deletion-2fa').val().trim();
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/resend-account-deletion-email`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/resend-account-deletion-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ twofa_code: twoFACode })
@@ -1724,7 +1724,7 @@ async function cancelAccountDeletion() {
   const twoFACode = $('#deletion-2fa').val().trim();
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/cancel-account-deletion`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/cancel-account-deletion`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ twofa_code: twoFACode })
@@ -1800,7 +1800,7 @@ async function renderGlobalDeletionBanner() {
 }
 
 async function fetchDeletionStatus() {
-  const response = await authenticatedFetch(`${BACKEND_URL}/api/users/deletion-status`, { method: 'GET' });
+  const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/deletion-status`, { method: 'GET' });
   const data = await response.json();
   if (!response.ok) {
     throw new Error(data.error || 'Failed to fetch deletion status');

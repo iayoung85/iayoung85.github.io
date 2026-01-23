@@ -1083,7 +1083,7 @@ async function promptRename(accountId, currentCustomName) {
   try {
     showStatus('Updating account name...', 'info');
     
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/connections/accounts/rename`, {
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/transactions/accounts/rename`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'

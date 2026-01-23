@@ -184,7 +184,7 @@ async function getTurnstileToken() {
 async function showRegister() {
   try {
     // Check if registration is enabled
-    const response = await fetch(`${BACKEND_URL}/api/users/registration-status`);
+    const response = await fetch(`${BACKEND_URL}/api/auth/registration-status`);
     if (response.ok) {
       const data = await response.json();
       if (!data.enabled) {
@@ -286,7 +286,7 @@ async function renderDashboardDeletionBanner(forceFresh = false) {
   }
 
   try {
-    const response = await authenticatedFetch(`${BACKEND_URL}/api/users/deletion-status`, { method: 'GET' });
+    const response = await authenticatedFetch(`${BACKEND_URL}/api/auth/deletion-status`, { method: 'GET' });
     const data = await response.json();
     const record = { ok: response.ok, data };
     writeSessionCache('deletion-status', record);
@@ -654,7 +654,7 @@ $('#login-form').on('submit', async function(e) {
   const password = $('#login-password').val();
   
   try {
-    const response = await fetch(`${BACKEND_URL}/api/users/login`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password })
@@ -707,7 +707,7 @@ async function resendVerification(email) {
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     const turnstileToken = await getTurnstileToken();
     
-    const response = await fetch(`${BACKEND_URL}/api/users/resend_verification`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/resend_verification`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -781,7 +781,7 @@ $('#forgot-form').on('submit', async function(e) {
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     const turnstileToken = await getTurnstileToken();
 
-    const response = await fetch(`${BACKEND_URL}/api/users/forgot_password`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/forgot_password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -824,7 +824,7 @@ $('#register-form').on('submit', async function(e) {
     const frontendUrl = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
     const turnstileToken = await getTurnstileToken();
 
-    const response = await fetch(`${BACKEND_URL}/api/users/register`, {
+    const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
