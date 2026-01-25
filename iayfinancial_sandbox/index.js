@@ -367,6 +367,9 @@ async function loadConnectedBanks(forceFresh = false) {
     const items = await getUserItems(forceFresh);
     const connectionsList = $('#connections-list');
     
+    // Check for webhook alerts and display them
+    displayWebhookAlerts(items);
+    
     if (items.length === 0) {
       connectionsList.html('<p style="color: #666; font-style: italic; margin-bottom: 8px">No connected banks yet. Click "Connect New Bank" to get started.</p>');
       return;
@@ -376,12 +379,35 @@ async function loadConnectedBanks(forceFresh = false) {
       const instName = item.institution_name || 'Unknown Bank';
       const itemId = item.plaid_item_id;
       const flagged = !!item.removal_flag;
+      const status = item.status || 'active';
+      const errorCode = item.error_code;
+      const newAccountsAvailable = item.new_accounts_available;
+      
+      // Determine item styling based on status
+      let itemBg = 'linear-gradient(135deg, #f0f4ff 0%, #e8f2ff 100%)';
+      let itemBorder = '#667eea20';
+      let statusIndicator = '';
+      
+      if (status === 'error' || status === 'permission_revoked') {
+        itemBg = 'linear-gradient(135deg, #ffe5e5 0%, #fff0f0 100%)';
+        itemBorder = '#ff000030';
+        statusIndicator = '<span style="color: #d32f2f; font-size: 20px; margin-right: 8px;" title="Connection Error">⚠️</span>';
+      } else if (status === 'needs_update') {
+        itemBg = 'linear-gradient(135deg, #fff4e5 0%, #fff9f0 100%)';
+        itemBorder = '#ff990030';
+        statusIndicator = '<span style="color: #f57c00; font-size: 20px; margin-right: 8px;" title="Update Required">⚠️</span>';
+      } else if (newAccountsAvailable) {
+        itemBg = 'linear-gradient(135deg, #e5f9ff 0%, #f0fdff 100%)';
+        itemBorder = '#0099ff30';
+        statusIndicator = '<span style="color: #0288d1; font-size: 20px; margin-right: 8px;" title="New Accounts Available">ℹ️</span>';
+      }
+      
       html += `
         <li style="
           margin-bottom: 8px; 
           padding: 12px 16px; 
-          background: linear-gradient(135deg, #f0f4ff 0%, #e8f2ff 100%);
-          border: 1px solid #667eea20;
+          background: ${itemBg};
+          border: 1px solid ${itemBorder};
           border-radius: 8px;
           display: flex;
           align-items: center;
@@ -394,6 +420,7 @@ async function loadConnectedBanks(forceFresh = false) {
         onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(102, 126, 234, 0.15)';"
         onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(102, 126, 234, 0.1)';">
           <div style="display: flex; align-items: center;">
+            ${statusIndicator}
             <span style="font-size: 18px; margin-right: 12px;">🏦</span>
             <span>${instName}</span>
           </div>
@@ -487,6 +514,104 @@ async function loadConnectedBanks(forceFresh = false) {
     console.error('Error stack:', error.stack);
     $('#connections-list').html(`<p style="color: #c33;">Error loading connected banks: ${error.message}</p>`);
   }
+}
+
+function displayWebhookAlerts(items) {
+  const alertContainer = $('#webhook-alerts-container');
+  alertContainer.empty();
+  
+  if (!items || items.length === 0) {
+    return;
+  }
+  
+  const alerts = [];
+  
+  items.forEach(item => {
+    const instName = item.institution_name || 'Unknown Bank';
+    const status = item.status || 'active';
+    const errorCode = item.error_code;
+    const newAccountsAvailable = item.new_accounts_available;
+    const itemId = item.plaid_item_id;
+    
+    // Critical: Permission revoked
+    if (status === 'permission_revoked') {
+      alerts.push({
+        type: 'critical',
+        icon: '🚨',
+        title: 'Action Required',
+        message: `<strong>${instName}</strong>: Your permission for this connection has been revoked. You must repair this connection or it will be deleted at the end of the month.`,
+        action: `<button onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}');" style="margin-left: 10px; padding: 6px 12px; background: #fff; color: #d32f2f; border: 2px solid #d32f2f; border-radius: 4px; cursor: pointer; font-weight: 600;">Repair Connection</button>`
+      });
+    }
+    // Error: Connection error
+    else if (status === 'error') {
+      alerts.push({
+        type: 'error',
+        icon: '⚠️',
+        title: 'Connection Error',
+        message: `<strong>${instName}</strong>: There was an issue with your connection${errorCode ? ` (${errorCode})` : ''}. Please refresh your connection.`,
+        action: `<button onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}');" style="margin-left: 10px; padding: 6px 12px; background: #fff; color: #f57c00; border: 2px solid #f57c00; border-radius: 4px; cursor: pointer; font-weight: 600;">Refresh Connection</button>`
+      });
+    }
+    // Warning: Needs update
+    else if (status === 'needs_update') {
+      alerts.push({
+        type: 'warning',
+        icon: '⏰',
+        title: 'Update Required',
+        message: `<strong>${instName}</strong>: Your bank connection will expire soon. Please refresh your connection.`,
+        action: `<button onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}');" style="margin-left: 10px; padding: 6px 12px; background: #fff; color: #f57c00; border: 2px solid #f57c00; border-radius: 4px; cursor: pointer; font-weight: 600;">Refresh Connection</button>`
+      });
+    }
+    // Info: New accounts available
+    else if (newAccountsAvailable) {
+      alerts.push({
+        type: 'info',
+        icon: 'ℹ️',
+        title: 'New Accounts Available',
+        message: `<strong>${instName}</strong>: New accounts are available for your connection. Click "Refresh Connection" to add them.`,
+        action: `<button onclick="reconnectBank('${itemId}', '${instName.replace(/'/g, "\\'")}');" style="margin-left: 10px; padding: 6px 12px; background: #fff; color: #0288d1; border: 2px solid #0288d1; border-radius: 4px; cursor: pointer; font-weight: 600;">Refresh Connection</button>`
+      });
+    }
+  });
+  
+  // Sort alerts by severity (critical > error > warning > info)
+  const severityOrder = { critical: 0, error: 1, warning: 2, info: 3 };
+  alerts.sort((a, b) => severityOrder[a.type] - severityOrder[b.type]);
+  
+  // Display alerts
+  alerts.forEach(alert => {
+    const colors = {
+      critical: { bg: '#ffebee', border: '#d32f2f', text: '#b71c1c' },
+      error: { bg: '#fff3e0', border: '#f57c00', text: '#e65100' },
+      warning: { bg: '#fff9e6', border: '#ffa726', text: '#f57c00' },
+      info: { bg: '#e3f2fd', border: '#0288d1', text: '#01579b' }
+    };
+    
+    const style = colors[alert.type];
+    
+    alertContainer.append(`
+      <div style="
+        background: ${style.bg};
+        border-left: 4px solid ${style.border};
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      ">
+        <div style="display: flex; align-items: center; flex: 1;">
+          <span style="font-size: 24px; margin-right: 12px;">${alert.icon}</span>
+          <div>
+            <div style="font-weight: 600; color: ${style.text}; margin-bottom: 4px;">${alert.title}</div>
+            <div style="color: ${style.text};">${alert.message}</div>
+          </div>
+        </div>
+        ${alert.action}
+      </div>
+    `);
+  });
 }
 
 async function toggleRemovalFlag(itemId, currentlyFlagged) {
