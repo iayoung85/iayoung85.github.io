@@ -657,42 +657,58 @@ function logout() {
   showLogin();
 }
 
+// Mutex to prevent multiple simultaneous refresh attempts
+let refreshPromise = null;
+
 async function refreshAccessToken() {
   if (!refreshToken) {
     logout(); // No refresh token, force logout
     return false;
   }
   
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      authToken = data.access_token;
-      localStorage.setItem(`${STORAGE_PREFIX}authToken`, authToken);
+  // If a refresh is already in progress, wait for it instead of making another call
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+  
+  // Create the refresh promise so other callers can await it
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken })
+      });
       
-      // Update refresh token if provided (Sliding Window)
-      if (data.refresh_token) {
-        refreshToken = data.refresh_token;
-        localStorage.setItem(`${STORAGE_PREFIX}refreshToken`, refreshToken);
+      if (response.ok) {
+        const data = await response.json();
+        authToken = data.access_token;
+        localStorage.setItem(`${STORAGE_PREFIX}authToken`, authToken);
+        
+        // Update refresh token if provided (Sliding Window)
+        if (data.refresh_token) {
+          refreshToken = data.refresh_token;
+          localStorage.setItem(`${STORAGE_PREFIX}refreshToken`, refreshToken);
+        }
+        
+        resetIdleTimeout(); // Reset idle timer after successful refresh
+        return true;
+      } else {
+        // Refresh token expired or invalid
+        logout();
+        return false;
       }
-      
-      resetIdleTimeout(); // Reset idle timer after successful refresh
-      return true;
-    } else {
-      // Refresh token expired or invalid
+    } catch (error) {
+      console.error('Token refresh failed:', error);
       logout();
       return false;
+    } finally {
+      // Clear the mutex so future refreshes can proceed
+      refreshPromise = null;
     }
-  } catch (error) {
-    console.error('Token refresh failed:', error);
-    logout();
-    return false;
-  }
+  })();
+  
+  return refreshPromise;
 }
 
 async function authenticatedFetch(url, options = {}) {
